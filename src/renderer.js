@@ -34,13 +34,16 @@
 //            works as a secondary control. High MELT: the mass slumps
 //            toward centre screen, the drops run fat and long, the pool
 //            seethes with bubbles, the glow wavers.
-//   margins = four LAB VESSELS shelved at their own heights (never
-//            floating): KICK = an Erlenmeyer flask, HATS = two test tubes
-//            in a rack, CLAP = a beaker, ACID = a dropper with a drop at
-//            its tip — each holding a violet-glowing liquid (surface line +
-//            micro bubbles), each bleeding a thin overflow all the way down
-//            into the pool. Tap to edit; muting quenches the liquid's glow
-//            and its run stops.
+//   inside = four LAB VESSELS adrift in the mass, each sealed in its own
+//            transparent BUBBLE (white line circle + top highlight arc + a
+//            faint violet glow): KICK = an Erlenmeyer flask, HATS = two
+//            test tubes in a rack, CLAP = a beaker, ACID = a dropper with
+//            a drop at its tip — each holding a violet-glowing liquid
+//            (surface line + micro bubbles). The bubbles drift through the
+//            goo honey-slow (out-of-phase sines), always kept inside the
+//            mass's thickness; high MELT stirs them lower and a little
+//            faster. Tap a bubble to edit; muting quenches the liquid's
+//            glow and dims the whole bubble.
 //
 // Owns the AudioContext and messages the melt engine in the AudioWorklet.
 
@@ -283,14 +286,19 @@ const TAG_ART = {
   },
 };
 
-// shelved at their own heights in the left/right margins — wall-fixed
+// each vessel is sealed in a transparent bubble adrift INSIDE the molten
+// mass: base anchors spread across its width at mid-depth (clear of the
+// skull at ~160,34), plus per-vessel drift amplitudes/rates — slow
+// phase-offset sines, horizontal ±10-14, vertical ±3-5, honey-speed
 const TAG_POS = {
-  kick: { x: 20, y: 112, s: 1.05, label: 'KICK' },
-  hat: { x: 300, y: 104, s: 0.92, label: 'HATS' },
-  clap: { x: 21, y: 166, s: 0.95, label: 'CLAP' },
-  // shifted inboard so the bottom-right band belongs to the MELT faucet
-  acid: { x: 270, y: 152, s: 1.0, label: 'ACID' },
+  kick: { x: 52, y: 30, s: 1.05, label: 'KICK', ax: 13, ay: 4.5, w: 0.30, ph: 0.7, off: 2.1 },
+  // drift kept clear of the skull (x ~145-175): bases pushed outward, sweep trimmed
+  hat: { x: 116, y: 21, s: 0.92, label: 'HATS', ax: 8, ay: 3.4, w: 0.36, ph: 2.9, off: 4.4 },
+  clap: { x: 210, y: 23, s: 0.95, label: 'CLAP', ax: 8, ay: 3.8, w: 0.27, ph: 4.6, off: 0.9 },
+  acid: { x: 268, y: 33, s: 1.0, label: 'ACID', ax: 13, ay: 4.8, w: 0.33, ph: 5.8, off: 3.2 },
 };
+const BUBBLE_R = 11.5; // the enclosing bubble's radius
+const BUBBLE_CLEAR = 20; // bubble bottom + trailing label kept this far above the mass's lower edge
 
 // ---- scene state ----
 
@@ -311,7 +319,7 @@ const bubbles = []; // pooled boil bubbles (high MELT)
 const impulses = []; // pool surface impacts { x, amp, age }
 const mistPts = []; // wall mist particles
 
-const tagEls = {}; // track -> { g, scale, liq, run, runPrefix }
+const tagEls = {}; // track -> { g, scale, liq, ph } (ph = live drift phase)
 const selectionRings = {};
 
 let meltValueEl = null;
@@ -542,27 +550,35 @@ function spawnRipple(x, big) {
   rp.el.setAttribute('stroke-width', big ? 1 : 0.7);
 }
 
-// ---- the four lab vessels shelved in the margins ----
+// ---- the four lab vessels: bubbled, adrift inside the molten mass ----
+// Each vessel rides in one transparent bubble (white line circle + top
+// highlight arc + a faint violet glow) drifting like honey through the
+// mass's body — the per-frame drift lives in renderFrame (one group
+// transform per vessel), pinned above the living lower edge via edgeYs.
 
 function buildTags() {
   for (const [track, cfg] of Object.entries(TAG_POS)) {
-    // this vessel's overflow, bleeding all the way down into the pool
-    // (the d is a stored prefix + the water line's y, re-joined per frame)
-    const runPrefix = `M ${cfg.x} ${cfg.y + 10} C ${cfg.x + 1.8} ${cfg.y + 40} ${cfg.x - 1.2} ${(cfg.y + POOL_BASE) / 2 + 30} ${cfg.x + 1} `;
-    const run = el('path', {
-      d: runPrefix + (POOL_BASE - 2),
-      fill: 'none', stroke: 'var(--accent2)', 'stroke-width': 0.5,
-      'stroke-linecap': 'round', opacity: 0.35,
-    });
-    space.appendChild(run);
-
     const g = el('g', { class: 'tagup', transform: `translate(${cfg.x} ${cfg.y})`, 'data-track': track });
     g.appendChild(el('circle', { cx: 0, cy: 2, r: 17, fill: 'transparent' })); // hit area
+    // selection lights the bubble's own rim
     const ring = el('circle', {
-      class: 'select-ring', cx: 0, cy: 0, r: 11.5,
-      stroke: 'var(--cream)', 'stroke-width': 0.8, fill: 'none', opacity: 0,
+      class: 'select-ring', cx: 0, cy: 0, r: BUBBLE_R,
+      stroke: 'var(--accent2)', 'stroke-width': 1, fill: 'none', opacity: 0,
+      filter: 'url(#glow)',
     });
     g.appendChild(ring);
+
+    // the bubble: faint violet glow, white line skin, top highlight arc
+    g.appendChild(el('circle', { cx: 0, cy: 0, r: BUBBLE_R, fill: 'url(#halo)', opacity: 0.22 }));
+    g.appendChild(el('circle', {
+      cx: 0, cy: 0, r: BUBBLE_R, fill: 'none',
+      stroke: 'rgba(240,234,246,0.55)', 'stroke-width': 0.7, filter: 'url(#glow)',
+    }));
+    g.appendChild(el('path', {
+      d: 'M -7 -7.2 Q -3 -10.6 1.6 -10',
+      fill: 'none', stroke: 'rgba(240,234,246,0.75)', 'stroke-width': 0.7,
+      'stroke-linecap': 'round',
+    }));
 
     const scale = el('g', { class: 'tag-scale' });
     scale.appendChild(el('circle', { cx: 0, cy: 0, r: 8, fill: 'url(#halo)', opacity: 0.8 }));
@@ -606,16 +622,19 @@ function buildTags() {
     scale.appendChild(inner);
     g.appendChild(scale);
 
-    const label = el('text', { y: 15.5, 'text-anchor': 'middle', class: 'tag-label' });
+    // the serif label trails just under the bubble
+    const label = el('text', { y: BUBBLE_R + 5.5, 'text-anchor': 'middle', class: 'tag-label' });
     label.textContent = cfg.label;
     g.appendChild(label);
 
+    // the bubbles float over the mass's hit slab — swallow the pointer so
+    // a vessel tap opens its editor instead of toggling play
     g.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
       selectTrack(track);
     });
     selectionRings[track] = ring;
-    tagEls[track] = { g, scale, liq, run, runPrefix };
+    tagEls[track] = { g, scale, liq, ph: cfg.ph };
     space.appendChild(g);
   }
 }
@@ -765,76 +784,6 @@ function buildPiece() {
   space.appendChild(sunEl);
 }
 
-// ---- the faucet (top-left, half-swallowed by the mass) = GEN-all ----
-// A white line-art tap poking out of the left edge: short pipe, downward
-// spout, cross handle, a small serif GEN label below. Fresh pattern drips
-// from the spout into the goo forever (CSS loop); tapping it re-rolls every
-// track at once with the editor's own generators. Drawn after the sun so
-// its hit slab sits above the play toggle.
-
-let faucetEl = null;
-let faucetHandleEl = null; // the cross handle, spins on GEN
-let faucetPourEl = null; // the fat luminous pour, flashed for ~0.6 s on GEN
-
-function buildFaucet() {
-  faucetEl = el('g', { class: 'faucet' });
-
-  const stroke = 'rgba(240,234,246,0.8)';
-  // pipe out of the left edge turning into a downward spout (one outline)
-  faucetEl.appendChild(el('path', {
-    d: 'M 0 22 L 25 22 Q 33.5 22 33.5 30 L 33.5 36 L 29.5 36 L 29.5 30.5 Q 29.5 26.5 25 26.5 L 0 26.5',
-    fill: 'none', stroke, 'stroke-width': 0.9,
-    'stroke-linecap': 'round', 'stroke-linejoin': 'round', filter: 'url(#glow)',
-  }));
-  // stem up to the cross handle (the handle itself is its own group,
-  // centred on 0,0 so the CSS spin turns it around its own axle)
-  faucetEl.appendChild(el('path', {
-    d: 'M 13 18 L 13 22', fill: 'none', stroke, 'stroke-width': 0.9, 'stroke-linecap': 'round',
-  }));
-  const handleWrap = el('g', { transform: 'translate(13 13)' });
-  faucetHandleEl = el('g', { class: 'faucet-handle' });
-  faucetHandleEl.appendChild(el('path', {
-    d: 'M -5 0 L 5 0 M 0 -5 L 0 5',
-    fill: 'none', stroke, 'stroke-width': 0.9, 'stroke-linecap': 'round', filter: 'url(#glow)',
-  }));
-  faucetHandleEl.appendChild(el('circle', {
-    cx: 0, cy: 0, r: 1.5, fill: 'none', stroke, 'stroke-width': 0.9,
-  }));
-  handleWrap.appendChild(faucetHandleEl);
-  faucetEl.appendChild(handleWrap);
-
-  // the pour: a fat stream gushing into the mass while a GEN lands
-  faucetPourEl = el('path', {
-    class: 'faucet-pour', d: 'M 31.5 36.5 L 31.5 66',
-    fill: 'none', stroke: 'var(--accent2)', 'stroke-width': 3.4,
-    'stroke-linecap': 'round', opacity: 0, filter: 'url(#glow)',
-  });
-  faucetEl.appendChild(faucetPourEl);
-
-  // fresh pattern forever dripping from the spout into the goo (CSS loop)
-  for (let i = 0; i < 2; i++) {
-    const dr = el('circle', {
-      class: 'faucet-drip', cx: 31.5, cy: 39, r: 1,
-      fill: 'var(--accent2)', opacity: 0, filter: 'url(#glow)',
-    });
-    dr.style.animationDelay = `${(i * 0.9).toFixed(2)}s`;
-    faucetEl.appendChild(dr);
-  }
-
-  const label = el('text', { x: 22, y: 50, 'text-anchor': 'middle', class: 'tag-label' });
-  label.textContent = 'GEN';
-  faucetEl.appendChild(label);
-
-  // hit slab — kept snug so the mass around it still toggles play
-  faucetEl.appendChild(el('rect', { x: 0, y: 6, width: 40, height: 45, fill: 'transparent' }));
-  faucetEl.addEventListener('pointerdown', (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    generateAll();
-  });
-  space.appendChild(faucetEl);
-}
-
 // ---- the MELT tap (bottom-right) = the melt macro ----
 // A second white line-art tap poking out of the right wall — pipe, downward
 // spout aimed at the pool, cross handle — sitting above the pool's highest
@@ -900,10 +849,10 @@ function buildMeltFaucet() {
   // serif MELT label + % readout stacked left of the spout, clear of the
   // stream and above the highest waterline — the pair reads as the
   // faucet's own nameplate instead of colliding with the ACID label
-  const label = el('text', { x: 297, y: 188, 'text-anchor': 'end', class: 'melt-tag' });
+  const label = el('text', { x: 297, y: 185, 'text-anchor': 'end', class: 'melt-tag' });
   label.textContent = 'MELT';
   g.appendChild(label);
-  meltValueEl = el('text', { x: 297, y: 195.5, 'text-anchor': 'end', class: 'melt-value' });
+  meltValueEl = el('text', { x: 297, y: 197.5, 'text-anchor': 'end', class: 'melt-value' });
   meltValueEl.textContent = '0%';
   g.appendChild(meltValueEl);
 
@@ -974,11 +923,10 @@ function buildScene() {
   buildDefs();
   buildWall();
   buildPool();
-  buildTags();
   buildDrips();
   buildGlob();
   buildPiece();
-  buildFaucet();
+  buildTags(); // after the mass: the bubbles ride over its goo AND its hit slab
   buildMeltFaucet();
   refreshOverview();
 }
@@ -1281,9 +1229,18 @@ function renderFrame(t) {
     if (Math.random() < 0.3) spawnRipple(MELT_SPOUT_X, false);
   }
 
-  // the four paint-runs always reach exactly down to the water
-  for (const { run, runPrefix } of Object.values(tagEls)) {
-    run.setAttribute('d', runPrefix + (poolY - 1).toFixed(1));
+  // the four bubbled vessels drift like honey through the mass's body —
+  // phase-integrated so high MELT stirs them faster without a jump, base
+  // sinking as the mass slumps, always clamped above the living lower
+  // edge (edgeYs at the nearest drip point) — one transform per vessel
+  for (const [track, cfg] of Object.entries(TAG_POS)) {
+    const tag = tagEls[track];
+    tag.ph += dt * cfg.w * (1 + melt * 0.7);
+    const bx = cfg.x + cfg.ax * Math.sin(tag.ph);
+    let by = cfg.y + melt * 12 + cfg.ay * Math.sin(tag.ph * 0.77 + cfg.off);
+    const near = Math.max(0, Math.min(STEPS - 1, Math.round((bx - DRIP_X0) / DRIP_DX)));
+    by = Math.min(by, edgeYs[near] - BUBBLE_CLEAR);
+    tag.g.setAttribute('transform', `translate(${bx.toFixed(2)} ${by.toFixed(2)})`);
   }
 
   // syrupy ripples: fast bloom, then a long slow crawl outward
@@ -1601,25 +1558,6 @@ document.querySelectorAll('.gen-btn').forEach((btn) => {
   btn.addEventListener('click', () => regenerate(btn.dataset.gen));
 });
 
-// the faucet pours a whole new pattern: every track re-rolled at once with
-// the editor's own generators. regenerate() already sends each row to the
-// engine, repaints the editor rows and the drip points, and persists the
-// same way any pattern edit does; mutes, voice params, MELT and the PTN
-// slots are untouched.
-function generateAll() {
-  regenerate('kick');
-  regenerate('hat');
-  regenerate('clap');
-  regenerate('acid');
-  // the handle whirls, the spout gushes for ~0.6 s, the mass shudders
-  kickEnv = 1;
-  faucetHandleEl.classList.remove('spun');
-  faucetPourEl.classList.remove('pouring');
-  void faucetEl.getBoundingClientRect(); // restart the one-shot animations
-  faucetHandleEl.classList.add('spun');
-  faucetPourEl.classList.add('pouring');
-}
-
 // jump straight to a layer's editor
 document.querySelectorAll('.jump-btn').forEach((btn) => {
   btn.addEventListener('pointerdown', (e) => {
@@ -1759,11 +1697,10 @@ function setMute(track, value) {
   document.querySelectorAll(`.mute-btn[data-mute="${track}"]`).forEach((b) => {
     b.classList.toggle('muting', value);
   });
-  // the vessel goes dark: its liquid's glow quenches, the glassware dims,
-  // and its overflow stops bleeding into the pool
+  // the vessel goes dark: its liquid's glow quenches and the whole
+  // bubble — skin, glassware, label — dims with it
   tagEls[track].liq.style.opacity = value ? 0 : '';
   tagEls[track].g.style.opacity = value ? 0.18 : '';
-  tagEls[track].run.style.opacity = value ? 0 : '';
 }
 
 document.querySelectorAll('.mute-btn').forEach((btn) => {

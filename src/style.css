@@ -358,7 +358,7 @@ main {
   pointer-events: none;
 }
 
-/* ---- the four lab vessels shelved in the margins ---- */
+/* ---- the four lab vessels, bubbled adrift inside the mass ---- */
 
 .tagup {
   cursor: pointer;
@@ -783,13 +783,7 @@ main {
   display: none;
 }
 
-/* ---- the faucet (top-left) = randomize-all ---- */
-
-.faucet {
-  cursor: pointer;
-}
-
-/* fresh pattern dripping from the spout into the goo, forever */
+/* the closed MELT tap's occasional idle drips */
 .faucet-drip {
   animation: faucet-drip 1.8s linear infinite;
 }
@@ -807,34 +801,6 @@ main {
   }
   100% {
     transform: translateY(18px);
-    opacity: 0;
-  }
-}
-
-/* GEN: the cross handle whirls once... */
-.faucet-handle.spun {
-  animation: faucet-spin 0.6s ease-in-out;
-}
-
-@keyframes faucet-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* ...while the spout gushes a fat luminous pour into the mass */
-.faucet-pour.pouring {
-  animation: faucet-pour 0.65s ease-out;
-}
-
-@keyframes faucet-pour {
-  0% {
-    opacity: 0;
-  }
-  18% {
-    opacity: 0.9;
-  }
-  100% {
     opacity: 0;
   }
 }
