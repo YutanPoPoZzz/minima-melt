@@ -1,10 +1,12 @@
 /* minima melt — molten acid machine, rendered in the minima series'
    light vocabulary: near-black background, strong film grain, vignette,
    EB Garamond serif, glowing white line-art / luminous orbs only — no fills,
-   no grey, no realistic illustration. The scene is a MOLTEN BODY: a slowly
-   wobbling luminous blob (play) that drips, a ring of 16 droplet nodes, a
-   molten-drop playhead, four half-melted lumps (tracks) and a melting
-   pillar (MELT). Accents: toxic violet + pale lavender, used sparingly.
+   no grey, no realistic illustration. The scene is MELTING GRAFFITI, a tag
+   drawn in light on a night wall: a wobbling bubble-letter "M" throw-up
+   (play) bleeding paint-runs, a ring of 16 spray splats (steps), a spray-can
+   playhead trailing mist, four melting graffiti icons (arrow / star / "!" /
+   crown = tracks) and a hand-tagged "MELT" that shears apart as you drag it
+   down. Accents: toxic violet + pale lavender, used sparingly.
    Single screen on phone and desktop. */
 
 @font-face {
@@ -299,7 +301,7 @@ main {
   display: block;
 }
 
-/* ---- scene bodies: half-melted lumps (tracks) ---- */
+/* ---- scene bodies: melting graffiti icons (tracks) ---- */
 
 .planet {
   cursor: pointer;
@@ -322,7 +324,7 @@ main {
   }
 }
 
-/* the lumps (and the fx point) drift gently, as if half afloat in the ooze */
+/* the icons (and the fx point) drift gently, as if half afloat in the ooze */
 .planet-body.bob {
   animation: bob 6s ease-in-out infinite;
 }
@@ -333,7 +335,7 @@ main {
   }
 }
 
-/* falling light-drip streaks crossing the chamber (galaxy's comets;
+/* paint-runs of light creeping down the wall (galaxy's comets;
    pathLength is normalized to 100) */
 .comet {
   stroke-dasharray: 14 86;
@@ -367,7 +369,7 @@ main {
   }
 }
 
-/* distant dust particles twinkle out of phase */
+/* distant mist particles twinkle out of phase */
 .bg-star {
   animation: twinkle 4s ease-in-out infinite;
   opacity: 0.2;
@@ -379,7 +381,7 @@ main {
   }
 }
 
-/* the molten core wobbles from JS; these auxiliary rings breathe with CSS */
+/* the bubble-letter M wobbles from JS; auxiliary rings breathe with CSS */
 .sun-haze,
 .sun-burst,
 .sun-load,
@@ -388,7 +390,7 @@ main {
   transform-origin: center;
 }
 
-/* while the audio engine loads, an arc of light circles the core */
+/* while the audio engine loads, an arc of light circles the M's window */
 .sun-load {
   opacity: 0;
 }
@@ -434,36 +436,35 @@ main {
   cursor: pointer;
 }
 
-/* ---- droplet ring: decorative shells rotate very slowly ---- */
+/* ---- splat ring: one hand-sprayed circle, no rotating shells ---- */
 
-.orbit-decor {
-  animation: orbit-precess 60s linear infinite;
-}
+/* ---- spray-can playhead: node to node, mist trailing off the nozzle ---- */
 
-.orbit-decor.rev {
-  animation-direction: reverse;
-  animation-duration: 84s;
-}
-
-@keyframes orbit-precess {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* ---- molten-drop playhead: node to node with a droopy light trail ---- */
-
-.blob-head {
+.spray-head {
   transition: transform 90ms linear;
 }
 
-.blob-head-core,
 .blob-head-glow {
   transform-box: fill-box;
   transform-origin: center;
 }
 
-/* ---- splash: the drop smacks through a lit droplet node ---- */
+/* the mist grains behind the nozzle flicker while the can travels */
+.can-mist {
+  animation: mist-flicker 1.5s ease-in-out infinite;
+}
+
+@keyframes mist-flicker {
+  0%,
+  100% {
+    opacity: 0.12;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* ---- spray burst: the can passes over a lit splat ---- */
 
 .splash {
   pointer-events: none;
@@ -481,7 +482,7 @@ main {
 }
 
 .splash.go .spl-1 {
-  animation: spl-1 380ms ease-out;
+  animation: spl-1 400ms ease-out;
 }
 
 .splash.go .spl-2 {
@@ -489,35 +490,39 @@ main {
 }
 
 .splash.go .spl-3 {
-  animation: spl-3 420ms ease-out;
+  animation: spl-3 440ms ease-out;
+}
+
+.splash.go .spl-4 {
+  animation: spl-4 380ms ease-out;
 }
 
 @keyframes spl-1 {
   from {
-    opacity: 0.95;
+    opacity: 0.9;
     translate: 0 0;
   }
   to {
     opacity: 0;
-    translate: -8px -7px;
+    translate: -8px -6px;
   }
 }
 
 @keyframes spl-2 {
   from {
-    opacity: 0.95;
+    opacity: 0.9;
     translate: 0 0;
   }
   to {
     opacity: 0;
-    translate: 8px -5px;
+    translate: 8px -4px;
   }
 }
 
-/* the third droplet droops — it flies out and sags down */
+/* one grain of mist droops — it puffs out and sags down like wet paint */
 @keyframes spl-3 {
   from {
-    opacity: 0.9;
+    opacity: 0.85;
     translate: 0 0;
   }
   60% {
@@ -529,7 +534,18 @@ main {
   }
 }
 
-/* a struck node squishes like jelly for an instant */
+@keyframes spl-4 {
+  from {
+    opacity: 0.85;
+    translate: 0 0;
+  }
+  to {
+    opacity: 0;
+    translate: -3px 7px;
+  }
+}
+
+/* a struck splat stretches like jelly for an instant */
 .node-g .node-core {
   transform-box: fill-box;
   transform-origin: center;
@@ -554,7 +570,7 @@ main {
   }
 }
 
-/* ---- MELT: the melting pillar, top-left (galaxy's black hole seat) ---- */
+/* ---- MELT: the melting tag "MELT", top-left (galaxy's black hole seat) ---- */
 
 .meltctl {
   cursor: ns-resize;
