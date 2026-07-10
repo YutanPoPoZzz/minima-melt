@@ -742,3 +742,85 @@ main {
     width: 52px;
   }
 }
+
+/* ---- the half-melted skull in the mass = the play mark ---- */
+
+.skull {
+  opacity: 0.55; /* dim while stopped */
+}
+
+.sun.playing .skull {
+  opacity: 0.92; /* faintly luminous while playing */
+}
+
+/* the little violet ▶ under the sockets breathes while stopped... */
+.skull-play {
+  animation: skull-play-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes skull-play-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* ...and vanishes while playing (the blinking sockets take over) */
+.sun.playing .skull-play {
+  display: none;
+}
+
+/* ---- the faucet (top-left) = randomize-all ---- */
+
+.faucet {
+  cursor: pointer;
+}
+
+/* fresh pattern dripping from the spout into the goo, forever */
+.faucet-drip {
+  animation: faucet-drip 1.8s linear infinite;
+}
+
+@keyframes faucet-drip {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.85;
+  }
+  78% {
+    opacity: 0.65;
+  }
+  100% {
+    transform: translateY(18px);
+    opacity: 0;
+  }
+}
+
+/* GEN: the cross handle whirls once... */
+.faucet-handle.spun {
+  animation: faucet-spin 0.6s ease-in-out;
+}
+
+@keyframes faucet-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ...while the spout gushes a fat luminous pour into the mass */
+.faucet-pour.pouring {
+  animation: faucet-pour 0.65s ease-out;
+}
+
+@keyframes faucet-pour {
+  0% {
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+  }
+}
