@@ -287,6 +287,8 @@ const TAG_POS = {
 // ---- scene state ----
 
 let sunEl = null; // the whole molten mass (class `sun`, play toggle)
+let skullEl = null; // the half-melted skull buried in the mass = play mark
+let skullEyesEl = null; // its eye-socket glow (kick-blinks while playing)
 let pieceGooEl = null; // goo container (dims while loading)
 let pieceHazeEl = null; // luminous wash behind the mass
 let blobOuterEl = null; // the mass: luminous fill + white outline, one path
@@ -706,6 +708,46 @@ function buildPiece() {
   });
   pieceGooEl.appendChild(blobOuterEl);
   pieceGooEl.appendChild(blobEchoEl);
+
+  // the half-melted skull buried at the mass's centre = the play mark
+  // ("where do I press play?"). White line art: a cranium with two big
+  // sockets and a nasal hollow; everything below the jawline has already
+  // melted, so the outline just trails off into molten runs. It lives in
+  // the goo container (so `.loading` dims it) inside the `sun` group (so
+  // tapping it is the existing play/stop pointerdown). Static paths — the
+  // per-frame cost is one group transform and one eye opacity.
+  skullEl = el('g', { class: 'skull' });
+  const bone = el('g', {
+    fill: 'none', stroke: 'rgba(240,234,246,0.85)', 'stroke-width': 1,
+    'stroke-linecap': 'round', 'stroke-linejoin': 'round', filter: 'url(#glow)',
+  });
+  // the dome, open at the bottom — the jaw is gone
+  bone.appendChild(el('path', {
+    d: 'M -11.5 7 C -14 0 -12.5 -8.5 -5.5 -12 C 1.5 -15.5 10 -12.5 12.5 -5.5 C 14 -1 13 4 11 7.5',
+  }));
+  // molten runs where the jaw used to be
+  bone.appendChild(el('path', { d: 'M -11.5 7 C -12.2 10.5 -10.8 12.5 -11.4 16', opacity: 0.4, 'stroke-width': 0.8 }));
+  bone.appendChild(el('path', { d: 'M 11 7.5 C 10.4 10 11.4 11.5 10.8 14', opacity: 0.32, 'stroke-width': 0.8 }));
+  bone.appendChild(el('path', { d: 'M -6.5 8.5 C -7.1 11 -5.9 12 -6.5 14.5', opacity: 0.26, 'stroke-width': 0.7 }));
+  // two big sockets (drooping a little apart) + the nasal hollow
+  bone.appendChild(el('ellipse', { cx: -5.2, cy: -2.2, rx: 3.1, ry: 3.7 }));
+  bone.appendChild(el('ellipse', { cx: 4.4, cy: -2.6, rx: 3.0, ry: 3.4 }));
+  bone.appendChild(el('path', { d: 'M -0.6 2.4 L -1.6 6 L 1 5.6 Z' }));
+  skullEl.appendChild(bone);
+  // the sockets' inner glow: dim embers while stopped, kick-blink playing
+  skullEyesEl = el('g', { fill: 'var(--accent)', filter: 'url(#glow)', opacity: 0.15 });
+  skullEyesEl.appendChild(el('ellipse', { cx: -5.2, cy: -2.2, rx: 2.1, ry: 2.6 }));
+  skullEyesEl.appendChild(el('ellipse', { cx: 4.4, cy: -2.6, rx: 2.0, ry: 2.3 }));
+  skullEl.appendChild(skullEyesEl);
+  // the play mark: a small violet ▶ glowing under the sockets — stopped
+  // only (CSS hides it while `.sun.playing`)
+  skullEl.appendChild(el('path', {
+    class: 'skull-play',
+    d: 'M -2.2 9.5 L 3.8 12.9 L -2.2 16.3 Z',
+    fill: 'var(--accent)', stroke: 'var(--accent2)', 'stroke-width': 0.4, filter: 'url(#glow)',
+  }));
+  pieceGooEl.appendChild(skullEl);
+
   sunEl.appendChild(pieceGooEl);
 
   // the whole mass is the button: a slab over its resting extent (the
@@ -714,6 +756,76 @@ function buildPiece() {
   sunEl.classList.add('loading');
   sunEl.addEventListener('pointerdown', togglePlay);
   space.appendChild(sunEl);
+}
+
+// ---- the faucet (top-left, half-swallowed by the mass) = GEN-all ----
+// A white line-art tap poking out of the left edge: short pipe, downward
+// spout, cross handle, a small serif GEN label below. Fresh pattern drips
+// from the spout into the goo forever (CSS loop); tapping it re-rolls every
+// track at once with the editor's own generators. Drawn after the sun so
+// its hit slab sits above the play toggle.
+
+let faucetEl = null;
+let faucetHandleEl = null; // the cross handle, spins on GEN
+let faucetPourEl = null; // the fat luminous pour, flashed for ~0.6 s on GEN
+
+function buildFaucet() {
+  faucetEl = el('g', { class: 'faucet' });
+
+  const stroke = 'rgba(240,234,246,0.8)';
+  // pipe out of the left edge turning into a downward spout (one outline)
+  faucetEl.appendChild(el('path', {
+    d: 'M 0 22 L 25 22 Q 33.5 22 33.5 30 L 33.5 36 L 29.5 36 L 29.5 30.5 Q 29.5 26.5 25 26.5 L 0 26.5',
+    fill: 'none', stroke, 'stroke-width': 0.9,
+    'stroke-linecap': 'round', 'stroke-linejoin': 'round', filter: 'url(#glow)',
+  }));
+  // stem up to the cross handle (the handle itself is its own group,
+  // centred on 0,0 so the CSS spin turns it around its own axle)
+  faucetEl.appendChild(el('path', {
+    d: 'M 13 18 L 13 22', fill: 'none', stroke, 'stroke-width': 0.9, 'stroke-linecap': 'round',
+  }));
+  const handleWrap = el('g', { transform: 'translate(13 13)' });
+  faucetHandleEl = el('g', { class: 'faucet-handle' });
+  faucetHandleEl.appendChild(el('path', {
+    d: 'M -5 0 L 5 0 M 0 -5 L 0 5',
+    fill: 'none', stroke, 'stroke-width': 0.9, 'stroke-linecap': 'round', filter: 'url(#glow)',
+  }));
+  faucetHandleEl.appendChild(el('circle', {
+    cx: 0, cy: 0, r: 1.5, fill: 'none', stroke, 'stroke-width': 0.9,
+  }));
+  handleWrap.appendChild(faucetHandleEl);
+  faucetEl.appendChild(handleWrap);
+
+  // the pour: a fat stream gushing into the mass while a GEN lands
+  faucetPourEl = el('path', {
+    class: 'faucet-pour', d: 'M 31.5 36.5 L 31.5 66',
+    fill: 'none', stroke: 'var(--accent2)', 'stroke-width': 3.4,
+    'stroke-linecap': 'round', opacity: 0, filter: 'url(#glow)',
+  });
+  faucetEl.appendChild(faucetPourEl);
+
+  // fresh pattern forever dripping from the spout into the goo (CSS loop)
+  for (let i = 0; i < 2; i++) {
+    const dr = el('circle', {
+      class: 'faucet-drip', cx: 31.5, cy: 39, r: 1,
+      fill: 'var(--accent2)', opacity: 0, filter: 'url(#glow)',
+    });
+    dr.style.animationDelay = `${(i * 0.9).toFixed(2)}s`;
+    faucetEl.appendChild(dr);
+  }
+
+  const label = el('text', { x: 22, y: 50, 'text-anchor': 'middle', class: 'tag-label' });
+  label.textContent = 'GEN';
+  faucetEl.appendChild(label);
+
+  // hit slab — kept snug so the mass around it still toggles play
+  faucetEl.appendChild(el('rect', { x: 0, y: 6, width: 40, height: 45, fill: 'transparent' }));
+  faucetEl.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    generateAll();
+  });
+  space.appendChild(faucetEl);
 }
 
 // open Catmull-Rom polyline -> cubic Bezier (the echo line primitive)
@@ -764,6 +876,7 @@ function buildScene() {
   buildDrips();
   buildGlob();
   buildPiece();
+  buildFaucet();
   refreshOverview();
 }
 
@@ -1001,6 +1114,14 @@ function renderFrame(t) {
   updateBlob(t);
   const flicker = melt * 0.12 * Math.sin(t / 95) * Math.sin(t / 41);
   pieceHazeEl.setAttribute('opacity', Math.max(0, 0.45 + kickEnv * 0.25 + flicker).toFixed(3));
+
+  // the skull rides in the goo: a light viscous wobble, sagging deeper as
+  // the world melts, shuddering with the kick; its sockets blink on the
+  // beat while playing and sit as dim embers while stopped
+  skullEl.setAttribute('transform',
+    `translate(${(160 + 1.1 * Math.sin(t / 830)).toFixed(2)} ${(34 + 0.8 * Math.sin(t / 640 + 2) + melt * 9 + kickEnv * 1.2).toFixed(2)})`
+    + ` rotate(${(1.8 * Math.sin(t / 1120)).toFixed(2)})`);
+  skullEyesEl.setAttribute('opacity', (playing ? 0.3 + kickEnv * 0.7 : 0.15).toFixed(2));
 
   // the 16 drops ride the living edge (transforms only, no new paths)
   const mSclX = 1 + melt * 0.55;
@@ -1360,6 +1481,25 @@ function regenerate(track) {
 document.querySelectorAll('.gen-btn').forEach((btn) => {
   btn.addEventListener('click', () => regenerate(btn.dataset.gen));
 });
+
+// the faucet pours a whole new pattern: every track re-rolled at once with
+// the editor's own generators. regenerate() already sends each row to the
+// engine, repaints the editor rows and the drip points, and persists the
+// same way any pattern edit does; mutes, voice params, MELT and the PTN
+// slots are untouched.
+function generateAll() {
+  regenerate('kick');
+  regenerate('hat');
+  regenerate('clap');
+  regenerate('acid');
+  // the handle whirls, the spout gushes for ~0.6 s, the mass shudders
+  kickEnv = 1;
+  faucetHandleEl.classList.remove('spun');
+  faucetPourEl.classList.remove('pouring');
+  void faucetEl.getBoundingClientRect(); // restart the one-shot animations
+  faucetHandleEl.classList.add('spun');
+  faucetPourEl.classList.add('pouring');
+}
 
 // jump straight to a layer's editor
 document.querySelectorAll('.jump-btn').forEach((btn) => {
