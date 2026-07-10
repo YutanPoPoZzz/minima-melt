@@ -1,43 +1,41 @@
-// minima melt — UI thread. The same architecture as galaxy/fission,
-// reinterpreted as MELTING GRAFFITI: a tag drawn in light on a night wall,
-// dissolving. Everything stays in the series' vocabulary — white line-art
-// and luminous orbs on near-black, never a painted fill:
+// minima melt — UI thread. Third-generation art direction: the GRAVITY
+// CASCADE WALL. The whole screen is one melting graffiti wall, read top to
+// bottom, ruled by a single force — gravity — and one material physics:
+// high-viscosity liquid (stretch, neck, tear, wobble back; honey time
+// constants everywhere).
 //
-//   galaxy sun         -> a bubble-letter "M" THROW-UP, dead centre: hollow
-//                         double outline, hand-drawn and wobbling (JS-driven
-//                         path), paint-runs threading off its lower edge.
-//                         = play/stop (pointerdown). It pulses while playing,
-//                         bulges on the kick, and its shockwave ring is the
-//                         sidechain made visible.
-//   galaxy orbit rings -> a ring of 16 SPRAY SPLATS around the M — the steps.
-//                         A lit splat glows violet and hangs a paint-run;
-//                         an accented acid step blazes bigger and wears a
-//                         crown; a slide step is joined to the previous one
-//                         by a streak of paint that ran along the wall.
-//   galaxy playhead    -> a little SPRAY CAN (white line-art) circling the
-//                         ring, scattering mist behind its nozzle; crossing
-//                         a lit splat it BURSTS: mist puffs out, a ripple
-//                         ring blooms and the splat stretches for an instant.
-//   galaxy planets     -> four MELTING GRAFFITI ICONS: KICK = a wildstyle
-//                         arrow, HATS = a sparkle star, CLAP = an
-//                         exclamation mark, ACID = a crown — each one-stroke
-//                         line-art with its underside drooping molten.
-//                         Tap to open the editor; muting dims the icon.
-//   galaxy black hole  -> MELT: a hand-tagged "MELT", top-left — drag DOWN
-//                         and the four letters shear, stretch and bleed
-//                         paint-runs until they are unreadable at 100%.
-//                         Mirrored by #melt-slider in the FX panel. High
-//                         MELT: the M slumps, the splat ring undulates,
-//                         wall paint-runs multiply and the glow wavers.
+//   top    = the PIECE: bubble-letter "MELT", four fat hollow throw-up
+//            letters across the full width. Hand wobble, lower edges always
+//            threading down. = play/stop toggle (pointerdown, class `sun`).
+//            While playing it pulses; every kick shudders the whole word and
+//            sends a ripple across the pool below.
+//   middle = 16 DRIPS falling from the letters' lower edge = the 16 steps.
+//            Unlit: a faint thin strand. Lit: the strand's tip swells into a
+//            heavy violet-glowing drop (each a random length). An accented
+//            acid step hangs a fatter, brighter drop and wears a tiny crown
+//            at its root; a slide step is joined to its neighbour's strand
+//            by a sagging catenary of light.
+//   playhead = a VISCOUS GLOB crawling left to right along the drip roots,
+//            pulling a thread from its last position that stretches, necks
+//            and snaps — then the glob wobbles back into shape. Passing a
+//            lit drip tears that drop off: it falls, lands heavy, and the
+//            pool answers with a slow, syrupy ripple. Stopped, the glob
+//            rests dim at step 0's root.
+//   bottom = the POOL of molten paint, full width = the MELT macro. A low-
+//            frequency luminous surface line; drag it up and down to set the
+//            level = melt %. High MELT: the letters slump toward
+//            unreadability, the drips run fat and multiply, the pool seethes
+//            with bubbles, the wall's glow wavers.
+//   margins = four small THROW-UPS pasted on the wall (never floating):
+//            KICK = a wildstyle arrow, HATS = a sparkle star, CLAP = "!",
+//            ACID = a crown — each at its own height, each bleeding its own
+//            thin paint-run all the way down into the pool. Tap to edit;
+//            muting dims it and its run stops.
 //
 // Owns the AudioContext and messages the melt engine in the AudioWorklet.
 
 const STEPS = 16;
 const NS = 'http://www.w3.org/2000/svg';
-const CX = 160;
-const CY = 130;
-const TILT = 0.42; // vertical squash of the ring plane
-const RING_R = 104; // droplet ring radius
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
@@ -133,43 +131,27 @@ async function ensureAudio() {
   });
   engine.connect(audioCtx.destination);
   engine.port.onmessage = (e) => {
-    if (e.data.type === 'step') movePlayhead(e.data.index);
+    // a step message can already be in flight when stop is pressed — letting
+    // it through would repaint the playhead after parkPlayhead cleared it
+    if (e.data.type === 'step' && playing) movePlayhead(e.data.index);
   };
   pushAllState();
 }
 
-// ---- melting-graffiti scene ----
+// =====================================================================
+// THE GRAVITY CASCADE WALL — scene geometry
+// =====================================================================
 
-// the four melting graffiti icons floating around the M (galaxy's planets)
-const LUMPS = {
-  acid: { x: 96, y: 46, s: 1.1, label: 'ACID' },
-  hat: { x: 240, y: 52, s: 0.85, label: 'HATS' },
-  kick: { x: 58, y: 208, s: 1.15, label: 'KICK' },
-  clap: { x: 262, y: 202, s: 0.95, label: 'CLAP' },
-};
+const W = 320;
+const H = 260;
+const PIECE_Y = 57; // centreline of the bubble letters
+const DRIP_TOP = 84; // where the 16 strands root, under the letters
+const DRIP_X0 = 48;
+const DRIP_DX = (272 - DRIP_X0) / (STEPS - 1);
+const POOL_BASE = 233; // pool surface at melt = 0
+const POOL_RANGE = 31; // how far the level rises by melt = 1
 
 const space = document.getElementById('space');
-const ringNodes = []; // per step: { g, core, tail, crown, scaleWrap }
-const nodePos = [];
-const slideThreads = []; // 16 ran-paint streaks, prev splat -> slide splat
-const dotMeta = []; // floating spray-mist particles that wander
-const lumpEls = {};
-const selectionRings = {};
-let playheadG = null;
-let splashG = null;
-let splashDrops = null;
-let sunIcon = null;
-let sunEl = null;
-let sunHazeEl = null;
-let coreBlobEl = null; // the wobbling outer outline of the M (JS-driven path)
-let coreInnerEl = null; // the inner echo line of the throw-up
-let coreDripsG = null; // paint-runs threading off the M's lower edge
-let burstEl = null;
-let ringG = null; // ring + splats + playhead: undulates as one at high MELT
-let cometA = null;
-let cometB = null;
-const meltStreaks = []; // extra wall paint-run streaks, revealed by MELT
-let kickEnv = 0; // M swell on each kick, decays in the rAF loop
 
 function el(tag, attrs = {}) {
   const node = document.createElementNS(NS, tag);
@@ -177,82 +159,161 @@ function el(tag, attrs = {}) {
   return node;
 }
 
-// project a point on the tilted ring plane; depth is 0 at the back, 1 in front
-function proj(r, deg) {
-  const a = ((deg - 90) * Math.PI) / 180;
-  return {
-    x: CX + r * Math.cos(a),
-    y: CY + TILT * r * Math.sin(a),
-    depth: (Math.sin(a) + 1) / 2,
-  };
+// deterministic per-index jitter, so the wall lays out the same every load
+function hash01(n) {
+  const s = Math.sin(n * 91.7 + 4.3) * 47453.5;
+  return s - Math.floor(s);
 }
 
-// closed Catmull-Rom spline through pts -> smooth cubic Bezier blob path
-function blobPath(pts) {
+// closed Catmull-Rom loop -> cubic Bezier path: the goo outline primitive
+function gooPath(pts) {
   const n = pts.length;
-  let d = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)} `;
+  const at = (i) => pts[(i + n) % n];
+  let d = `M ${at(0).x.toFixed(2)} ${at(0).y.toFixed(2)}`;
   for (let i = 0; i < n; i++) {
-    const p0 = pts[(i - 1 + n) % n];
-    const p1 = pts[i];
-    const p2 = pts[(i + 1) % n];
-    const p3 = pts[(i + 2) % n];
-    d += `C ${(p1.x + (p2.x - p0.x) / 6).toFixed(2)} ${(p1.y + (p2.y - p0.y) / 6).toFixed(2)}, `
-      + `${(p2.x - (p3.x - p1.x) / 6).toFixed(2)} ${(p2.y - (p3.y - p1.y) / 6).toFixed(2)}, `
-      + `${p2.x.toFixed(2)} ${p2.y.toFixed(2)} `;
+    const a = at(i - 1);
+    const b = at(i);
+    const c = at(i + 1);
+    const e = at(i + 2);
+    d += ` C ${(b.x + (c.x - a.x) / 6).toFixed(2)} ${(b.y + (c.y - a.y) / 6).toFixed(2)}`
+      + ` ${(c.x - (e.x - b.x) / 6).toFixed(2)} ${(c.y - (e.y - b.y) / 6).toFixed(2)}`
+      + ` ${c.x.toFixed(2)} ${c.y.toFixed(2)}`;
   }
-  return d + 'Z';
+  return d + ' Z';
 }
 
-// a static spray-splat outline: an irregular star of spikes, one per node,
-// its character varied by seed. Built once — animated only by transform.
-function splatPath(r, seed) {
-  const spikes = 7;
-  let d = '';
-  for (let i = 0; i < spikes * 2; i++) {
-    const ang = (i / (spikes * 2)) * Math.PI * 2 + seed;
-    const rad = i % 2 === 0
-      ? r * (1 + 0.35 * Math.sin(seed * 3 + i * 2.1))
-      : r * (0.42 + 0.12 * Math.sin(seed * 5 + i * 1.3));
-    d += `${i === 0 ? 'M' : 'L'} ${(rad * Math.cos(ang)).toFixed(2)} ${(rad * Math.sin(ang)).toFixed(2)} `;
+// open midpoint-smoothed polyline (the pool surface primitive)
+function wavePath(x0, dx, ys) {
+  let d = `M ${x0} ${ys[0].toFixed(2)}`;
+  for (let i = 1; i < ys.length; i++) {
+    const px = x0 + dx * (i - 1);
+    const mx = x0 + dx * (i - 0.5);
+    d += ` Q ${px.toFixed(1)} ${ys[i - 1].toFixed(2)} ${mx.toFixed(1)} ${((ys[i - 1] + ys[i]) / 2).toFixed(2)}`;
   }
-  return d + 'Z';
+  d += ` L ${(x0 + dx * (ys.length - 1)).toFixed(1)} ${ys[ys.length - 1].toFixed(2)}`;
+  return d;
 }
 
-// a tiny one-stroke crown, worn by accented splats (and ACID's own icon)
-const CROWN = 'M -3.2 0.6 L -3.2 -2.6 L -1.6 -0.9 L 0 -3.4 L 1.6 -0.9 L 3.2 -2.6 L 3.2 0.6 Z';
+// ---- the piece: bubble letters M E L T ----
+// Each letter is a closed control-point loop, inflated by gooPath and
+// re-pathed every frame with hand wobble + melt slump. Local box ~48x44.
 
-// the melting graffiti icons, one-stroke line-art (drift's car abstraction):
-// each outline's underside droops molten. Local coords, unit ~16px tall.
-const ICON_PATHS = {
-  // KICK: a wildstyle block arrow flying up-right, its tail dripping
+const LETTERS = [
+  {
+    cx: 70,
+    s: 0.98,
+    pts: [
+      [-20, 20], [-24, 4], [-20, -13], [-10, -21], [0, -9], [10, -21],
+      [20, -13], [24, 4], [20, 20], [11, 19], [7, 2], [0, 11], [-7, 2], [-11, 19],
+    ],
+  },
+  {
+    cx: 130,
+    s: 0.9,
+    pts: [
+      [-19, -20], [5, -22], [15, -17], [15, -11], [-2, -9], [-2, -4], [9, -6],
+      [13, 0], [9, 6], [-2, 4], [-2, 9], [15, 11], [15, 17], [5, 22], [-19, 20], [-23, 0],
+    ],
+  },
+  {
+    cx: 190,
+    s: 0.93,
+    pts: [
+      [-15, -21], [-4, -22], [-2, -12], [-3, 3], [2, 7], [13, 6], [20, 12],
+      [16, 21], [-7, 22], [-19, 14], [-21, -12],
+    ],
+  },
+  {
+    cx: 250,
+    s: 0.95,
+    pts: [
+      [-22, -22], [0, -24], [22, -22], [23, -14], [11, -9], [8, 3], [9, 14],
+      [2, 22], [-6, 15], [-8, 3], [-10, -9], [-23, -14],
+    ],
+  },
+];
+
+// the hanging drop at a drip's tip: attach point at 0,0, bulb below
+const DROP_D = 'M 0 0 C 2.4 2.2 2.9 4.6 0 7.2 C -2.9 4.6 -2.4 2.2 0 0 Z';
+
+// tiny crown worn at the root of an accented drip
+const CROWN_D = 'M -2.8 1.2 L -2.8 -1.8 L -1.3 -0.4 L 0 -2.6 L 1.3 -0.4 L 2.8 -1.8 L 2.8 1.2 Z';
+
+// the four wall throw-ups: one-stroke graffiti glyphs, local unit ~14px tall
+const TAG_GLYPHS = {
+  // KICK: a wildstyle arrow flying up-right, barbed at both ends
   kick: [
-    'M 6 -6 L 5 0 L 3.6 -1.4 L -3.4 5.6 Q -3.9 8.4 -4.9 6 L -5.6 3.4 L 1.4 -3.6 L 0 -5 Z',
+    'M 5.8 -5.8 L 4.6 -0.6 L 2.8 -2.2 L -2.6 3.2 L -1 4.6 L -5.8 5.8 L -4.6 1 L -3 2.4 L 2.4 -3 L 0.6 -4.6 Z',
   ],
-  // HATS: a sparkle star whose bottom ray sags and stretches
+  // HATS: a four-ray sparkle star, edges sucked in like taffy
   hat: [
-    'M 0 -7 Q 1.1 -1.6 6.2 0 Q 1.1 1.4 0.4 6.2 Q 0.2 8.6 -0.7 6 Q -1.1 1.4 -6.2 0 Q -1.1 -1.6 0 -7 Z',
+    'M 0 -6.6 C 0.9 -2.2 2.2 -0.9 6.4 0 C 2.2 0.9 0.9 2.2 0 6.6 C -0.9 2.2 -2.2 0.9 -6.4 0 C -2.2 -0.9 -0.9 -2.2 0 -6.6 Z',
   ],
-  // CLAP: an exclamation mark, its dot half-melted into a droplet
+  // CLAP: an exclamation mark, its dot already gone droplet
   clap: [
-    'M -1.3 -7.5 L 1.3 -7.5 L 0.8 1.6 L -0.8 1.6 Z',
-    'M -1 4.4 Q -1 3.2 0 3.2 Q 1 3.2 1 4.4 Q 1 5.9 0.3 6.7 Q 0 7.1 -0.2 6.4 Q -1 5.6 -1 4.4 Z',
+    'M -1.4 -6.8 L 1.4 -6.8 L 0.8 1.4 L -0.8 1.4 Z',
+    'M 0 3.6 C 1.2 3.6 1.4 4.6 0.9 5.7 C 0.5 6.6 -0.5 6.6 -0.9 5.7 C -1.4 4.6 -1.2 3.6 0 3.6 Z',
   ],
-  // ACID: a crown whose base bulges downward, mid-melt
+  // ACID: a squat crown sagging at the base
   acid: [
-    'M -6.4 -3.6 L -3.1 -0.9 L 0 -5.6 L 3.1 -0.9 L 6.4 -3.6 L 5.3 3.4 Q 0.2 5.9 -5.3 3.4 Z',
+    'M -5.8 -3.4 L -2.8 -0.8 L 0 -5.2 L 2.8 -0.8 L 5.8 -3.4 L 4.6 3.2 Q 0 4.8 -4.6 3.2 Z',
   ],
 };
 
-// skeleton of the central bubble-letter "M" (throw-up): a closed clockwise
-// outline, smoothed into fat rounded strokes by blobPath. Local coords; the
-// window between the top valley and the bottom V keeps the play glyph clear.
-const M_PTS = [
-  [-19, 14], [-21, 2], [-17, -10], [-9, -15], [0, -8], [9, -15], [17, -10],
-  [21, 2], [19, 14], [10, 13], [7, 0], [0, 9], [-7, 0], [-10, 13],
-];
+// pasted at their own heights in the left/right margins — wall-fixed
+const TAG_POS = {
+  kick: { x: 20, y: 112, s: 1.05, label: 'KICK' },
+  hat: { x: 300, y: 104, s: 0.92, label: 'HATS' },
+  clap: { x: 21, y: 166, s: 0.95, label: 'CLAP' },
+  acid: { x: 299, y: 158, s: 1.0, label: 'ACID' },
+};
 
-// atmosphere: gradients, glow filter, haze banks, falling drip streaks
-function buildAtmosphere() {
+// ---- scene state ----
+
+let sunEl = null; // the whole MELT piece (class `sun`, play toggle)
+let pieceGooEl = null; // letters container (dims while loading)
+let pieceHazeEl = null; // luminous wash behind the word
+const letterEls = []; // per letter: { outer, inner } sharing one d per frame
+
+const dripsArr = []; // per step: { g, line, dropWrap, drop, halo, crown, x, sway, lenOff, lenOn, curLen }
+const slideThreads = []; // 16 catenaries of light, prev drip tip -> slide drip tip
+const ghostDrips = []; // extra faint strands that surface as MELT rises
+const fallDrops = []; // pooled falling droplets (glob strikes)
+const ripples = []; // pooled pool-surface ripples
+const bubbles = []; // pooled boil bubbles (high MELT)
+const impulses = []; // pool surface impacts { x, amp, age }
+const mistPts = []; // wall mist particles
+
+const tagEls = {}; // track -> { g, scale, run }
+const selectionRings = {};
+
+let meltValueEl = null;
+let poolFillEl = null;
+let poolLineEl = null;
+let poolEchoEl = null;
+let poolY = POOL_BASE;
+let poolTarget = POOL_BASE;
+let kickEnv = 0; // word shudder on each kick, decays in the rAF loop
+let nowT = 0; // last rAF timestamp, for surface queries outside animate
+
+const meltSlider = document.getElementById('melt-slider');
+
+// the viscous glob playhead
+const glob = {
+  g: null,
+  body: null,
+  thread: null,
+  x: DRIP_X0,
+  targetX: DRIP_X0,
+  fromX: DRIP_X0,
+  threadLife: 0,
+  pluck: 0,
+  parked: true,
+};
+
+// ---- defs: glow filter + luminous gradients (series-standard infra) ----
+
+function buildDefs() {
   const defs = el('defs');
 
   const glow = el('filter', { id: 'glow', x: '-120%', y: '-120%', width: '340%', height: '340%' });
@@ -263,584 +324,478 @@ function buildAtmosphere() {
   glow.appendChild(merge);
   defs.appendChild(glow);
 
-  // pale violet chamber haze
-  const haze = el('radialGradient', { id: 'haze', cx: '50%', cy: '46%', r: '52%' });
-  haze.appendChild(el('stop', { offset: '0%', 'stop-color': '#e9dcf6', 'stop-opacity': 0.3 }));
-  haze.appendChild(el('stop', { offset: '55%', 'stop-color': '#d3bfe8', 'stop-opacity': 0.1 }));
-  haze.appendChild(el('stop', { offset: '100%', 'stop-color': '#d3bfe8', 'stop-opacity': 0 }));
-  defs.appendChild(haze);
+  // wash of light behind the piece
+  const pieceHaze = el('radialGradient', { id: 'piece-haze' });
+  pieceHaze.appendChild(el('stop', { offset: '0%', 'stop-color': '#efdffb', 'stop-opacity': 0.5 }));
+  pieceHaze.appendChild(el('stop', { offset: '60%', 'stop-color': '#b678f2', 'stop-opacity': 0.14 }));
+  pieceHaze.appendChild(el('stop', { offset: '100%', 'stop-color': '#a34dff', 'stop-opacity': 0 }));
+  defs.appendChild(pieceHaze);
 
-  // molten core glow: white heart falling off through toxic violet
-  const coreHaze = el('radialGradient', { id: 'core-haze' });
-  coreHaze.appendChild(el('stop', { offset: '0%', 'stop-color': '#fdfaff', 'stop-opacity': 1 }));
-  coreHaze.appendChild(el('stop', { offset: '45%', 'stop-color': '#c98aff', 'stop-opacity': 0.4 }));
-  coreHaze.appendChild(el('stop', { offset: '100%', 'stop-color': '#a34dff', 'stop-opacity': 0 }));
-  defs.appendChild(coreHaze);
+  // a lit hanging drop: hot core into violet falloff
+  const dropLit = el('radialGradient', { id: 'drop-lit' });
+  dropLit.appendChild(el('stop', { offset: '0%', 'stop-color': '#f6edff', 'stop-opacity': 1 }));
+  dropLit.appendChild(el('stop', { offset: '55%', 'stop-color': '#a34dff', 'stop-opacity': 0.8 }));
+  dropLit.appendChild(el('stop', { offset: '100%', 'stop-color': '#a34dff', 'stop-opacity': 0.05 }));
+  defs.appendChild(dropLit);
 
-  // luminous orb: tiny hot core, wide violet falloff — no flat white areas
-  const orb = el('radialGradient', { id: 'orb' });
-  orb.appendChild(el('stop', { offset: '0%', 'stop-color': '#ffffff', 'stop-opacity': 1 }));
-  orb.appendChild(el('stop', { offset: '35%', 'stop-color': '#efe2ff', 'stop-opacity': 0.85 }));
-  orb.appendChild(el('stop', { offset: '100%', 'stop-color': '#a34dff', 'stop-opacity': 0 }));
-  defs.appendChild(orb);
+  // an accented drop blazes whiter
+  const dropAcc = el('radialGradient', { id: 'drop-acc' });
+  dropAcc.appendChild(el('stop', { offset: '0%', 'stop-color': '#ffffff', 'stop-opacity': 1 }));
+  dropAcc.appendChild(el('stop', { offset: '50%', 'stop-color': '#d9b3ff', 'stop-opacity': 0.9 }));
+  dropAcc.appendChild(el('stop', { offset: '100%', 'stop-color': '#a34dff', 'stop-opacity': 0.08 }));
+  defs.appendChild(dropAcc);
 
-  // a lit step node: a small violet light-orb
-  const nodeViolet = el('radialGradient', { id: 'node-violet' });
-  nodeViolet.appendChild(el('stop', { offset: '0%', 'stop-color': '#f6edff', 'stop-opacity': 1 }));
-  nodeViolet.appendChild(el('stop', { offset: '55%', 'stop-color': '#a34dff', 'stop-opacity': 0.75 }));
-  nodeViolet.appendChild(el('stop', { offset: '100%', 'stop-color': '#a34dff', 'stop-opacity': 0 }));
-  defs.appendChild(nodeViolet);
+  // soft violet halo (drop glow, throw-up hearts)
+  const halo = el('radialGradient', { id: 'halo' });
+  halo.appendChild(el('stop', { offset: '0%', 'stop-color': '#c98aff', 'stop-opacity': 0.55 }));
+  halo.appendChild(el('stop', { offset: '100%', 'stop-color': '#a34dff', 'stop-opacity': 0 }));
+  defs.appendChild(halo);
 
-  // an accented acid node runs hotter: white into blazing lavender
-  const nodeAcc = el('radialGradient', { id: 'node-acc' });
-  nodeAcc.appendChild(el('stop', { offset: '0%', 'stop-color': '#ffffff', 'stop-opacity': 1 }));
-  nodeAcc.appendChild(el('stop', { offset: '50%', 'stop-color': '#d9b3ff', 'stop-opacity': 0.85 }));
-  nodeAcc.appendChild(el('stop', { offset: '100%', 'stop-color': '#a34dff', 'stop-opacity': 0 }));
-  defs.appendChild(nodeAcc);
+  // the glob: dense white heart, syrupy violet skin
+  const globBody = el('radialGradient', { id: 'glob-body' });
+  globBody.appendChild(el('stop', { offset: '0%', 'stop-color': '#ffffff', 'stop-opacity': 1 }));
+  globBody.appendChild(el('stop', { offset: '45%', 'stop-color': '#efe2ff', 'stop-opacity': 0.9 }));
+  globBody.appendChild(el('stop', { offset: '100%', 'stop-color': '#a34dff', 'stop-opacity': 0.22 }));
+  defs.appendChild(globBody);
 
-  // falling light drips (comets): white-violet fade
-  const fade = el('linearGradient', { id: 'fade' });
-  fade.appendChild(el('stop', { offset: '0%', 'stop-color': '#e6d8f4', 'stop-opacity': 0 }));
-  fade.appendChild(el('stop', { offset: '70%', 'stop-color': '#f0e6fb', 'stop-opacity': 0.5 }));
-  fade.appendChild(el('stop', { offset: '100%', 'stop-color': '#faf6ff', 'stop-opacity': 1 }));
-  defs.appendChild(fade);
+  // the pool: luminous at the surface, black at depth (userSpace so it
+  // tracks the water line's neighbourhood)
+  const poolFill = el('linearGradient', {
+    id: 'pool-fill', gradientUnits: 'userSpaceOnUse', x1: 0, y1: 196, x2: 0, y2: 262,
+  });
+  poolFill.appendChild(el('stop', { offset: '0%', 'stop-color': '#d9b3ff', 'stop-opacity': 0.32 }));
+  poolFill.appendChild(el('stop', { offset: '30%', 'stop-color': '#a34dff', 'stop-opacity': 0.15 }));
+  poolFill.appendChild(el('stop', { offset: '100%', 'stop-color': '#a34dff', 'stop-opacity': 0.03 }));
+  defs.appendChild(poolFill);
 
   space.appendChild(defs);
+}
 
-  // ghosts of a huge tag, buried in the wall: 1-2 fragment strokes at a
-  // whisper of opacity — fat marker sweeps, never louder than the scene
+// ---- the wall behind everything: ghost tags, dried runs, mist ----
+
+function buildWall() {
+  // one or two fragments of an old buried tag, at a whisper of opacity
   space.appendChild(el('path', {
-    d: 'M -28 216 C 42 152 96 238 148 176 C 184 134 146 116 190 94 C 226 76 264 118 332 72',
-    fill: 'none', stroke: 'rgba(240,234,246,0.045)', 'stroke-width': 7, 'stroke-linecap': 'round',
+    d: 'M -20 158 C 46 118 92 186 150 132 C 196 90 238 148 336 96',
+    fill: 'none', stroke: 'rgba(240,234,246,0.04)', 'stroke-width': 6.5, 'stroke-linecap': 'round',
   }));
   space.appendChild(el('path', {
-    d: 'M 236 270 C 250 212 302 198 286 152 C 276 124 300 108 326 112',
-    fill: 'none', stroke: 'rgba(240,234,246,0.035)', 'stroke-width': 5, 'stroke-linecap': 'round',
+    d: 'M 226 250 C 246 196 214 168 252 140',
+    fill: 'none', stroke: 'rgba(240,234,246,0.032)', 'stroke-width': 4.5, 'stroke-linecap': 'round',
   }));
 
-  // chamber haze banks, drifting very slowly (CSS animation)
-  space.appendChild(el('ellipse', { class: 'haze-a', cx: 88, cy: 72, rx: 112, ry: 60, fill: 'url(#haze)', opacity: 0.5 }));
-  space.appendChild(el('ellipse', { class: 'haze-b', cx: 250, cy: 206, rx: 120, ry: 68, fill: 'url(#haze)', opacity: 0.4 }));
-
-  // paint-runs of light creeping down the wall (the galaxy comets, vertical)
-  cometA = el('path', { class: 'comet comet-a', d: 'M 66 -8 C 70 70 62 160 66 268', pathLength: 100, stroke: 'url(#fade)', 'stroke-width': 0.9, fill: 'none', opacity: 0.5 });
-  cometB = el('path', { class: 'comet comet-b', d: 'M 254 -8 C 250 84 258 170 252 268', pathLength: 100, stroke: 'url(#fade)', 'stroke-width': 0.7, fill: 'none', opacity: 0.32 });
-  space.appendChild(cometA);
-  space.appendChild(cometB);
-  // extra runs that only appear as MELT rises
-  for (const [cls, d, w] of [
-    ['comet comet-c', 'M 118 -8 C 122 90 114 180 120 268', 0.8],
-    ['comet comet-d', 'M 210 -8 C 206 76 214 168 208 268', 0.7],
-    ['comet comet-c', 'M 30 -8 C 34 96 26 186 32 268', 0.6],
-  ]) {
-    const p = el('path', { class: cls, d, pathLength: 100, stroke: 'url(#fade)', 'stroke-width': w, fill: 'none', opacity: 0 });
-    space.appendChild(p);
-    meltStreaks.push(p);
+  // dried paint-runs from pieces long gone: static vertical streaks
+  for (const [x, w, o] of [[88, 1.4, 0.05], [143, 1, 0.04], [201, 1.6, 0.045], [262, 0.9, 0.038]]) {
+    space.appendChild(el('path', {
+      d: `M ${x} 30 C ${x + 2} 96 ${x - 1.6} 170 ${x + 1} 250`,
+      fill: 'none', stroke: `rgba(240,234,246,${o})`, 'stroke-width': w, 'stroke-linecap': 'round',
+    }));
   }
 
-  // fine spray-mist particles afloat in the dark
-  for (let i = 0; i < 18; i++) {
-    const bx = 14 + Math.random() * 292;
-    const by = 14 + Math.random() * 232;
-    const dot = el('circle', { cx: bx, cy: by, r: (0.5 + Math.random() * 0.7).toFixed(2), fill: 'var(--light)', opacity: (0.1 + Math.random() * 0.2).toFixed(2) });
+  // fine mist afloat against the wall
+  for (let i = 0; i < 12; i++) {
+    const bx = 12 + hash01(i * 7 + 2) * 296;
+    const by = 20 + hash01(i * 11 + 5) * 200;
+    const dot = el('circle', {
+      cx: bx, cy: by, r: (0.5 + hash01(i * 3) * 0.6).toFixed(2),
+      fill: 'var(--light)', opacity: (0.08 + hash01(i * 13 + 1) * 0.16).toFixed(2),
+    });
     space.appendChild(dot);
-    dotMeta.push({
-      el: dot,
-      bx,
-      by,
-      ph: Math.random() * 6.28,
-      w: 0.25 + Math.random() * 0.5,
-      ax: 3 + Math.random() * 4,
-      ay: 2 + Math.random() * 3,
+    mistPts.push({
+      el: dot, bx, by,
+      ph: hash01(i * 17) * 6.28,
+      w: 0.2 + hash01(i * 19) * 0.4,
+      ax: 2 + hash01(i * 23) * 3,
+      ay: 1.5 + hash01(i * 29) * 2.5,
     });
   }
 
-  // faint distant sparks, twinkling out of phase
-  for (const [x, y, r] of [[52, 196, 1.1], [296, 226, 0.9], [124, 24, 0.8], [206, 244, 0.7]]) {
+  // a few sparks twinkling out of phase
+  for (const [x, y, r] of [[40, 34, 0.9], [284, 40, 0.8], [160, 24, 0.7]]) {
     const star = el('circle', { class: 'bg-star', cx: x, cy: y, r, fill: 'var(--text)' });
-    star.style.animationDelay = `${(Math.random() * 5).toFixed(2)}s`;
-    star.style.animationDuration = `${(3.5 + Math.random() * 3).toFixed(2)}s`;
+    star.style.animationDelay = `${(hash01(x) * 5).toFixed(2)}s`;
+    star.style.animationDuration = `${(3.5 + hash01(y) * 3).toFixed(2)}s`;
     space.appendChild(star);
   }
 }
 
-// the splat ring carrying the 16 step nodes, plus decorative shells.
-// Everything lives in ringG so the whole ring can undulate at high MELT.
-function buildRing() {
-  ringG = el('g', { class: 'ring-g' });
-  ringG.style.transformOrigin = `${CX}px ${CY}px`;
-  space.appendChild(ringG);
+// ---- the pool (bottom, full width) = the MELT macro ----
 
-  // the sequencer ring: one hand-sprayed circle tag — a wobbly closed sweep
-  // instead of a perfect ellipse (perfect crossed orbits read as fission/
-  // galaxy DNA, which this unit must not echo)
-  const ringPts = [];
-  for (let i = 0; i < 24; i++) {
-    const a = (i / 24) * Math.PI * 2;
-    const wob = 1 + 0.045 * Math.sin(a * 3 + 0.9) + 0.03 * Math.sin(a * 5 + 2.2);
-    ringPts.push({ x: CX + RING_R * wob * Math.cos(a), y: CY + RING_R * TILT * wob * Math.sin(a) });
-  }
-  ringG.appendChild(el('path', { class: 'orbit-ring', d: blobPath(ringPts), fill: 'none', stroke: 'rgba(240,234,246,0.32)', 'stroke-width': 0.7, 'stroke-linejoin': 'round' }));
-  // the second pass of the spray: an open, offset arc that trails off —
-  // the way a hand doubles a circle without ever closing it
-  const passPts = [];
-  for (let i = 0; i <= 13; i++) {
-    const a = ((i + 9.5) / 24) * Math.PI * 2;
-    const wob = 1.05 + 0.05 * Math.sin(a * 4 + 4.1);
-    passPts.push(`${(CX + RING_R * wob * Math.cos(a)).toFixed(1)} ${(CY + RING_R * TILT * wob * Math.sin(a) + 1.5).toFixed(1)}`);
-  }
-  ringG.appendChild(el('path', { class: 'orbit-pass', d: 'M ' + passPts.join(' L '), fill: 'none', stroke: 'rgba(240,234,246,0.14)', 'stroke-width': 1.6, 'stroke-linecap': 'round', 'stroke-dasharray': '10 3 16 2 22 4', 'stroke-linejoin': 'round' }));
+function buildPool() {
+  poolFillEl = el('path', { d: '', fill: 'url(#pool-fill)' });
+  space.appendChild(poolFillEl);
 
-  // slide streaks: paint that ran along the wall from a slide splat back to
-  // the splat before it, sagging under gravity (hidden until a slide is lit)
-  for (let i = 0; i < STEPS; i++) {
-    const th = el('path', { d: '', fill: 'none', stroke: 'var(--accent2)', 'stroke-width': 0.8, 'stroke-linecap': 'round', opacity: 0, filter: 'url(#glow)' });
-    ringG.appendChild(th);
-    slideThreads.push(th);
+  // syrupy ripples that widen slowly when a drop lands (pooled)
+  for (let i = 0; i < 4; i++) {
+    const r = el('ellipse', {
+      cx: 0, cy: 0, rx: 0, ry: 0, fill: 'none',
+      stroke: 'var(--accent2)', 'stroke-width': 0.7, opacity: 0,
+    });
+    space.appendChild(r);
+    ripples.push({ el: r, active: false, x: 0, r: 0, age: 0 });
   }
 
-  // 16 spray splats strung on the ring: a static star-splat outline (path,
-  // transform/opacity animation only) + a hanging paint-run + a crown that
-  // only accented acid steps wear
-  for (let i = 0; i < STEPS; i++) {
-    const p = proj(RING_R, i * 22.5);
-    nodePos.push(p);
-    const g = el('g', { class: 'node-g', transform: `translate(${p.x.toFixed(2)} ${p.y.toFixed(2)})` });
-    const baseR = 2.2 + 1.4 * p.depth;
-    const tail = el('path', { class: 'node-tail', d: '', fill: 'none', stroke: 'var(--accent)', 'stroke-width': 0.8, 'stroke-linecap': 'round', opacity: 0 });
-    const scaleWrap = el('g', { class: 'splat-scale' });
-    const core = el('path', { class: 'node-core', d: splatPath(baseR, i * 1.7 + 0.6), fill: 'none', stroke: 'rgba(240,234,246,0.5)', 'stroke-width': 0.7, 'stroke-linejoin': 'round' });
-    const crown = el('path', { class: 'node-crown', d: CROWN, transform: `translate(0 ${(-baseR - 3.2).toFixed(1)}) scale(0.8)`, fill: 'none', stroke: 'var(--accent2)', 'stroke-width': 0.8, 'stroke-linejoin': 'round', opacity: 0, filter: 'url(#glow)' });
-    scaleWrap.appendChild(core);
-    scaleWrap.appendChild(crown);
-    g.appendChild(tail);
-    g.appendChild(scaleWrap);
-    g.dataset.depth = p.depth.toFixed(3);
-    ringG.appendChild(g);
-    ringNodes.push({ g, core, tail, crown, scaleWrap });
+  // boil bubbles for high MELT (pooled)
+  for (let i = 0; i < 5; i++) {
+    const b = el('circle', {
+      cx: 0, cy: 0, r: 1, fill: 'none',
+      stroke: 'var(--accent2)', 'stroke-width': 0.5, opacity: 0,
+    });
+    space.appendChild(b);
+    bubbles.push({ el: b, active: false, x: 0, y: 0, r: 1, vy: 0, pop: 0 });
   }
 
-  // the spray-burst rig: ripple ring + a puff of mist particles.
-  // Repositioned to a splat and replayed on each strike.
-  splashG = el('g', { class: 'splash' });
-  splashG.appendChild(el('circle', { class: 'ripple', cx: 0, cy: 0, r: 5.5, fill: 'none', stroke: 'var(--accent)', 'stroke-width': 1.2 }));
-  splashDrops = el('g');
-  splashDrops.style.transformOrigin = '0px 0px';
-  splashDrops.appendChild(el('circle', { class: 'spl spl-1', cx: 0, cy: 0, r: 1.1, fill: 'var(--accent2-bright)', filter: 'url(#glow)' }));
-  splashDrops.appendChild(el('circle', { class: 'spl spl-2', cx: 0, cy: 0, r: 0.9, fill: 'var(--accent)', filter: 'url(#glow)' }));
-  splashDrops.appendChild(el('circle', { class: 'spl spl-3', cx: 0, cy: 0, r: 1, fill: 'var(--accent2)', filter: 'url(#glow)' }));
-  splashDrops.appendChild(el('circle', { class: 'spl spl-4', cx: 0, cy: 0, r: 0.7, fill: 'var(--accent2-bright)', filter: 'url(#glow)' }));
-  splashG.appendChild(splashDrops);
-  ringG.appendChild(splashG);
-
-  // the spray-can playhead: a small one-stroke can (drift-car abstraction)
-  // gliding around the ring, nozzle trailing mist behind it. Drawn with
-  // travel along +x, then rotated to the ring's heading like the rest.
-  playheadG = el('g', { class: 'spray-head' });
-  // mist scattered behind the nozzle (behind = -x)
-  const mistSpots = [[-5.5, -0.7, 0.7], [-8, 0.9, 0.55], [-10.5, -1, 0.45], [-7, -2.2, 0.4]];
-  for (const [k, [mx, my, mr]] of mistSpots.entries()) {
-    const m = el('circle', { class: 'can-mist', cx: mx, cy: my, r: mr, fill: 'var(--accent2)', opacity: 0.45 });
-    m.style.animationDelay = `${(k * 0.37).toFixed(2)}s`;
-    playheadG.appendChild(m);
-  }
-  playheadG.appendChild(el('circle', { class: 'blob-head-glow', cx: 0, cy: 0, r: 5, fill: 'url(#orb)', opacity: 0.5 }));
-  const can = el('g', { transform: 'rotate(-90)' }); // cap/nozzle face backwards
-  // body: a slim rounded canister
-  can.appendChild(el('path', { d: 'M -1.9 -0.6 L -1.9 4.6 Q -1.9 5.6 -0.9 5.6 L 0.9 5.6 Q 1.9 5.6 1.9 4.6 L 1.9 -0.6 Z', fill: 'none', stroke: '#f6edff', 'stroke-width': 0.8, 'stroke-linejoin': 'round', filter: 'url(#glow)' }));
-  // cap dome + nozzle stub
-  can.appendChild(el('path', { d: 'M -1.3 -0.6 Q -1.3 -2 0 -2 Q 1.3 -2 1.3 -0.6', fill: 'none', stroke: '#f6edff', 'stroke-width': 0.8 }));
-  can.appendChild(el('path', { d: 'M -0.4 -2.2 L -0.4 -3.1 L 0.4 -3.1 L 0.4 -2.2', fill: 'none', stroke: '#f6edff', 'stroke-width': 0.7 }));
-  // the violet label band
-  can.appendChild(el('line', { x1: -1.9, y1: 2.3, x2: 1.9, y2: 2.3, stroke: 'var(--accent)', 'stroke-width': 0.7, opacity: 0.9 }));
-  playheadG.appendChild(can);
-  ringG.appendChild(playheadG);
-  parkPlayhead();
-}
-
-// heading (degrees) of the ring at node `index`, from the tangent between its
-// neighbours — so the can's mist streams behind its direction of travel
-function headingAt(index) {
-  const prev = nodePos[(index - 1 + STEPS) % STEPS];
-  const next = nodePos[(index + 1) % STEPS];
-  return (Math.atan2(next.y - prev.y, next.x - prev.x) * 180) / Math.PI;
-}
-
-// park the spray can, dimmed, at step 0 so the ring always keeps its writer
-function parkPlayhead() {
-  const p = nodePos[0];
-  lastDeg = headingAt(0);
-  playheadG.style.transition = 'none';
-  playheadG.style.transform = `translate(${p.x.toFixed(2)}px, ${p.y.toFixed(2)}px) rotate(${lastDeg.toFixed(1)}deg)`;
-  playheadG.style.opacity = 0.28;
-}
-
-// a track icon: melting graffiti in one-stroke white line-art (arrow, star,
-// "!", crown) + a luminous heart + a hanging drip, annotated with a serif
-// label (galaxy's planet)
-function buildLump(track, cfg) {
-  const g = el('g', { class: 'planet', transform: `translate(${cfg.x} ${cfg.y})`, 'data-track': track });
-  const s = cfg.s;
-  // generous invisible hit area (the icon is small)
-  g.appendChild(el('circle', { cx: 0, cy: 4, r: 24, fill: 'transparent' }));
-  const ring = el('circle', { class: 'select-ring', cx: 0, cy: 2, r: 14 * s + 4, stroke: 'var(--cream)', 'stroke-width': 0.9, fill: 'none', opacity: 0 });
-  g.appendChild(ring);
-
-  const scaleWrap = el('g', { class: 'planet-scale' });
-  const body = el('g', { class: 'planet-body bob' });
-  body.style.animationDelay = `${(Math.random() * -6).toFixed(2)}s`;
-  // the luminous heart glowing behind the tag
-  body.appendChild(el('circle', { cx: 0, cy: 0, r: (4.4 * s).toFixed(2), fill: 'url(#orb)', opacity: 0.55 }));
-  // the melting icon itself, white line-art (static paths, scaled per track)
-  for (const d of ICON_PATHS[track]) {
-    body.appendChild(el('path', { d, fill: 'none', stroke: 'rgba(240,234,246,0.75)', 'stroke-width': 0.9, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', filter: 'url(#glow)', transform: `scale(${s})` }));
-  }
-  // a paint-run stretching from the icon's underside
-  const dripY = 8.5 * s;
-  body.appendChild(el('path', { d: `M 0.5 ${dripY.toFixed(1)} Q 0.9 ${(dripY + 2.4).toFixed(1)} 0.4 ${(dripY + 4.4).toFixed(1)}`, fill: 'none', stroke: 'var(--accent2)', 'stroke-width': 0.6, 'stroke-linecap': 'round', opacity: 0.55 }));
-  body.appendChild(el('circle', { cx: 0.4, cy: dripY + 5.4, r: 0.8, fill: 'var(--accent)', opacity: 0.7 }));
-  scaleWrap.appendChild(body);
-  g.appendChild(scaleWrap);
-
-  // thin leader line down to the annotation label, like a technical diagram
-  const halo = 14 * s + 5;
-  g.appendChild(el('line', { x1: 0, y1: halo + 1, x2: 0, y2: halo + 7, stroke: 'var(--dim)', 'stroke-width': 0.5 }));
-  const text = el('text', { y: halo + 18, 'text-anchor': 'middle', class: 'planet-label' });
-  text.textContent = cfg.label;
-  g.appendChild(text);
-
-  g.addEventListener('pointerdown', (e) => {
-    e.stopPropagation();
-    selectTrack(track);
+  // the luminous water line (+ a fat dim violet echo just under it)
+  poolEchoEl = el('path', {
+    d: '', fill: 'none', stroke: 'var(--accent)', 'stroke-width': 2.6,
+    opacity: 0.22, transform: 'translate(0 2.2)',
   });
-  selectionRings[track] = ring;
-  lumpEls[track] = g;
-  return g;
-}
-
-function buildScene() {
-  buildAtmosphere();
-  buildRing();
-
-  // track icons (after the ring so they sit on top)
-  for (const [track, cfg] of Object.entries(LUMPS)) {
-    space.appendChild(buildLump(track, cfg));
-  }
-
-  // fx: a small luminous point floating top-right, annotated like the rest
-  const fx = el('g', { class: 'planet', transform: 'translate(291 24)', 'data-track': 'fx' });
-  fx.appendChild(el('circle', { cx: 0, cy: 8, r: 18, fill: 'transparent' }));
-  const fxRing = el('circle', { class: 'select-ring', cx: 0, cy: 0, r: 11, stroke: 'var(--cream)', 'stroke-width': 0.9, fill: 'none', opacity: 0 });
-  const fxBody = el('g', { class: 'planet-body bob' });
-  fxBody.appendChild(el('circle', { cx: 0, cy: 0, r: 6, fill: 'none', stroke: '#ffffff', 'stroke-width': 1.1, filter: 'url(#glow)' }));
-  fx.appendChild(el('line', { x1: 0, y1: 8, x2: 0, y2: 15, stroke: 'var(--dim)', 'stroke-width': 0.5 }));
-  const fxText = el('text', { y: 26, 'text-anchor': 'middle', class: 'planet-label' });
-  fxText.textContent = 'FX';
-  fx.appendChild(fxRing);
-  fx.appendChild(fxBody);
-  fx.appendChild(fxText);
-  fx.addEventListener('pointerdown', (e) => {
-    e.stopPropagation();
-    selectTrack('fx');
+  poolLineEl = el('path', {
+    d: '', fill: 'none', stroke: '#f6edff', 'stroke-width': 1,
+    opacity: 0.85, filter: 'url(#glow)',
   });
-  selectionRings.fx = fxRing;
-  lumpEls.fx = fx;
-  space.appendChild(fx);
+  space.appendChild(poolEchoEl);
+  space.appendChild(poolLineEl);
 
-  buildMeltPillar();
-
-  // the bubble-letter "M" THROW-UP = play button (drawn last so it floats
-  // on top of the ring)
-  const sun = el('g', { class: 'sun' });
-  sunHazeEl = el('circle', { class: 'sun-haze', cx: CX, cy: CY + 2, r: 42, fill: 'url(#core-haze)', opacity: 0.75 });
-  sun.appendChild(sunHazeEl);
-  // shockwave ring that expands on every kick — the sidechain, visualized
-  burstEl = el('circle', { class: 'sun-burst', cx: CX, cy: CY, r: 17, stroke: '#ffffff', 'stroke-width': 1, fill: 'none', opacity: 0 });
-  sun.appendChild(burstEl);
-
-  // the letter itself: a fat outer outline + an inner echo line (the classic
-  // hollow double stroke of a throw-up), both re-pathed every frame from
-  // slow hand-wobble sines (see animate); only these deform — the play
-  // controls below stay perfectly still so the tap target never moves.
-  const coreWrap = el('g', { class: 'core-wrap' });
-  coreBlobEl = el('path', { d: '', fill: 'none', stroke: 'rgba(240,234,246,0.85)', 'stroke-width': 1.2, 'stroke-linejoin': 'round', filter: 'url(#glow)' });
-  coreInnerEl = el('path', { d: '', fill: 'url(#core-haze)', 'fill-opacity': 0.3, stroke: 'var(--accent)', 'stroke-width': 0.7, opacity: 0.75 });
-  coreWrap.appendChild(coreInnerEl);
-  coreWrap.appendChild(coreBlobEl);
-  sun.appendChild(coreWrap);
-
-  // paint-runs hanging and falling off the letter's lower edge (JS-driven)
-  coreDripsG = el('g');
-  sun.appendChild(coreDripsG);
-
-  // play control: loading arc + stroked glyph, sitting in the M's window
-  sun.appendChild(el('circle', { class: 'sun-load', cx: CX, cy: CY, r: 16.5, stroke: '#ffffff', 'stroke-width': 1.3, fill: 'none', 'stroke-dasharray': '26 78', 'stroke-linecap': 'round', filter: 'url(#glow)' }));
-  sunIcon = el('path', { class: 'sun-icon', d: playPath(), fill: 'none', stroke: '#ffffff', 'stroke-width': 1.4, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', filter: 'url(#glow)' });
-  sun.appendChild(sunIcon);
-  // an invisible, always-round hit target on top of everything
-  const hit = el('circle', { cx: CX, cy: CY, r: 25, fill: 'transparent' });
-  sun.appendChild(hit);
-  sun.classList.add('loading');
-  sunEl = sun;
-  sun.addEventListener('pointerdown', togglePlay);
-  space.appendChild(sun);
-
-  buildCoreDrips();
-  refreshOverview();
-}
-
-// compact glyphs, sized to sit inside the M's central window
-function playPath() {
-  return `M${CX - 2.8} ${CY - 4.2} L${CX + 4.8} ${CY} L${CX - 2.8} ${CY + 4.2} Z`;
-}
-
-// two slim bars while playing — tap to stop
-function stopPath() {
-  return `M${CX - 2.4} ${CY - 4} L${CX - 2.4} ${CY + 4} M${CX + 2.4} ${CY - 4} L${CX + 2.4} ${CY + 4}`;
-}
-
-// ---- the central M: hand wobble, kick bulge, slumping with MELT ----
-
-function corePoints(t) {
-  const pts = [];
-  const breathe = playing ? 0.05 * Math.sin(t / 430) : 0.024 * Math.sin(t / 1500);
-  const s = 1 + breathe + kickEnv * 0.13;
-  for (let i = 0; i < M_PTS.length; i++) {
-    const [bx, by] = M_PTS[i];
-    const x = bx * s
-      + 0.9 * Math.sin(t / 560 + i * 1.9)
-      + melt * 0.8 * Math.sin(t / 300 + i * 2.7);
-    let y = by * s
-      + 0.9 * Math.sin(t / 700 + i * 2.6);
-    // the letter slumps: everything below the waist drags down with MELT —
-    // at 100% the M hangs like wet paint
-    if (by > 0) {
-      const down = by / 14;
-      y += down * down * (1.4 + melt * 11 + kickEnv * 1.6);
-    }
-    pts.push({ x: CX + x, y: CY + y });
-  }
-  return pts;
-}
-
-// ---- paint-runs off the M: threads of light that stretch down from the
-// letter's lower edge, snap, and fall as glowing beads ----
-
-const drips = [];
-
-function buildCoreDrips() {
-  for (let i = 0; i < 3; i++) {
-    const thread = el('line', { stroke: 'var(--accent2)', 'stroke-width': 0.7, 'stroke-linecap': 'round', opacity: 0 });
-    const bead = el('circle', { r: 1.2, fill: 'var(--accent)', filter: 'url(#glow)', opacity: 0 });
-    coreDripsG.appendChild(thread);
-    coreDripsG.appendChild(bead);
-    drips.push({ thread, bead, state: 'idle', wait: 1 + Math.random() * 4, x: 0, y0: 0, len: 0, y: 0, vy: 0, max: 8 });
-  }
-}
-
-function stepDrips(dt) {
-  const speedUp = 1 + (playing ? 1.2 : 0) + melt * 2.6;
-  for (const d of drips) {
-    if (d.state === 'idle') {
-      d.wait -= dt * speedUp;
-      d.thread.setAttribute('opacity', 0);
-      d.bead.setAttribute('opacity', 0);
-      if (d.wait <= 0) {
-        d.state = 'forming';
-        // spawn anywhere along the M's lower edge — the feet hang lower
-        // than the middle V, and the whole edge sinks as MELT rises
-        d.x = CX + (Math.random() - 0.5) * 34;
-        d.y0 = CY + 10 + melt * 10 + Math.abs(d.x - CX) * 0.22;
-        d.len = 0;
-        d.max = 6 + Math.random() * 7 + melt * 6;
-      }
-    } else if (d.state === 'forming') {
-      d.len += dt * (9 + melt * 18);
-      d.thread.setAttribute('x1', d.x.toFixed(1));
-      d.thread.setAttribute('y1', d.y0.toFixed(1));
-      d.thread.setAttribute('x2', d.x.toFixed(1));
-      d.thread.setAttribute('y2', (d.y0 + d.len).toFixed(1));
-      d.thread.setAttribute('opacity', 0.7);
-      d.bead.setAttribute('cx', d.x.toFixed(1));
-      d.bead.setAttribute('cy', (d.y0 + d.len).toFixed(1));
-      d.bead.setAttribute('opacity', 0.85);
-      if (d.len >= d.max) {
-        d.state = 'falling';
-        d.y = d.y0 + d.len;
-        d.vy = 12;
-      }
-    } else {
-      // falling: the bead detaches and drops, fading into the dark
-      d.vy += 130 * dt;
-      d.y += d.vy * dt;
-      const fall = (d.y - d.y0 - d.max) / 46;
-      d.thread.setAttribute('opacity', Math.max(0, 0.5 - fall * 1.6).toFixed(2));
-      d.bead.setAttribute('cy', d.y.toFixed(1));
-      d.bead.setAttribute('opacity', Math.max(0, 0.85 - fall).toFixed(2));
-      if (fall >= 1) {
-        d.state = 'idle';
-        d.wait = 0.8 + Math.random() * 4;
-      }
-    }
-  }
-}
-
-// ---- MELT: the melting tag, top-left — four hand-tagged letters "MELT"
-// that shear, stretch and bleed paint-runs as you drag DOWN over them,
-// unreadable sludge at 100% ----
-
-let meltGroup = null;
-let meltValueEl = null;
-const meltLetters = []; // per letter: { g, x } (transform-deformed in setMelt)
-const meltLetterDrips = []; // per letter: { thread, bead }
-const meltSlider = document.getElementById('melt-slider');
-
-// one-stroke tag letters M E L T, each centred on its own x (8px tall)
-const TAG_LETTERS = [
-  { d: 'M -3 4 L -3 -4 L 0 0.5 L 3 -4 L 3 4', x: -13.5 },
-  { d: 'M 3 -4 L -2.5 -4 L -2.5 4 L 3 4 M -2.5 0 L 2 0', x: -4.5 },
-  { d: 'M -2.5 -4 L -2.5 4 L 3 4', x: 4 },
-  { d: 'M -3 -4 L 3 -4 M 0 -4 L 0 4', x: 12.5 },
-];
-
-// how hard each letter shears (deg), stretches and drops at full melt —
-// uneven on purpose, so the word collapses like paint, not like a transform
-const TAG_SHEAR = [34, 48, 30, 44];
-const TAG_DROP = [3, 5.5, 4, 7];
-
-function buildMeltPillar() {
-  const g = el('g', { class: 'meltctl', transform: 'translate(36 26)' });
-  meltGroup = g;
-  const hit = el('rect', { x: -22, y: -14, width: 44, height: 52, fill: 'transparent' });
-  g.appendChild(hit);
-
-  const throb = el('g', { class: 'melt-throb' });
-  for (const L of TAG_LETTERS) {
-    const lg = el('g', { transform: `translate(${L.x} 0)` });
-    lg.appendChild(el('path', { d: L.d, fill: 'none', stroke: 'var(--light)', 'stroke-width': 1, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', filter: 'url(#glow)' }));
-    throb.appendChild(lg);
-    meltLetters.push({ g: lg, x: L.x });
-    // a paint-run threading off this letter's base
-    const thread = el('line', { x1: L.x, y1: 5, x2: L.x, y2: 5, stroke: 'var(--accent2)', 'stroke-width': 0.6, 'stroke-linecap': 'round', opacity: 0 });
-    const bead = el('circle', { cx: L.x, cy: 5, r: 0.8, fill: 'var(--accent)', filter: 'url(#glow)', opacity: 0 });
-    throb.appendChild(thread);
-    throb.appendChild(bead);
-    meltLetterDrips.push({ thread, bead });
-  }
-  g.appendChild(throb);
-
-  meltValueEl = el('text', { y: 30, 'text-anchor': 'middle', class: 'melt-value' });
+  // level readout at the surface's right end
+  meltValueEl = el('text', { x: 306, y: POOL_BASE - 6, 'text-anchor': 'end', class: 'melt-value' });
   meltValueEl.textContent = '0%';
-  g.appendChild(meltValueEl);
+  space.appendChild(meltValueEl);
 
-  g.addEventListener('pointerdown', (e) => {
+  // drag the surface up/down = MELT amount
+  const hit = el('rect', { class: 'pool-hit', x: 0, y: 186, width: W, height: H - 186, fill: 'transparent' });
+  hit.addEventListener('pointerdown', (e) => {
     e.stopPropagation();
     e.preventDefault();
     try {
-      g.setPointerCapture(e.pointerId);
+      hit.setPointerCapture(e.pointerId);
     } catch {}
     const startY = e.clientY;
     const start = melt;
-    // dragging DOWN melts the tag (dissolution pulls everything down)
-    const onMove = (ev) => setMelt(start + (ev.clientY - startY) / 130);
+    // dragging UP raises the level — the world sinks into the paint
+    const onMove = (ev) => setMelt(start + (startY - ev.clientY) / 110);
     const onUp = () => {
-      g.removeEventListener('pointermove', onMove);
-      g.removeEventListener('pointerup', onUp);
+      hit.removeEventListener('pointermove', onMove);
+      hit.removeEventListener('pointerup', onUp);
     };
-    g.addEventListener('pointermove', onMove);
-    g.addEventListener('pointerup', onUp);
+    hit.addEventListener('pointermove', onMove);
+    hit.addEventListener('pointerup', onUp);
   });
-  space.appendChild(g);
+  space.appendChild(hit);
 }
 
-function setMelt(value) {
-  melt = Math.min(1, Math.max(0, value));
-  send({ type: 'melt', value: melt });
-  meltValueEl.textContent = `${Math.round(melt * 100)}%`;
-  // each letter shears sideways, stretches downward and sinks — by 100%
-  // the word is a smear of strokes with paint-runs threading off it
-  for (const [i, L] of meltLetters.entries()) {
-    const sk = melt * TAG_SHEAR[i];
-    const sy = 1 + melt * (1.3 + 0.3 * i);
-    const dy = melt * TAG_DROP[i];
-    L.g.setAttribute('transform',
-      `translate(${L.x} ${dy.toFixed(1)}) skewY(${sk.toFixed(1)}) scale(1 ${sy.toFixed(2)})`);
-    const d = meltLetterDrips[i];
-    const bx = L.x + melt * 2.2;
-    const y0 = dy + 4 * sy + 1; // just under the stretched letter's base
-    const len = melt * (6 + i * 2.2);
-    d.thread.setAttribute('x1', bx.toFixed(1));
-    d.thread.setAttribute('x2', bx.toFixed(1));
-    d.thread.setAttribute('y1', y0.toFixed(1));
-    d.thread.setAttribute('y2', (y0 + len).toFixed(1));
-    d.thread.setAttribute('opacity', melt > 0.05 ? 0.65 : 0);
-    d.bead.setAttribute('cx', bx.toFixed(1));
-    d.bead.setAttribute('cy', (y0 + len).toFixed(1));
-    d.bead.setAttribute('opacity', melt > 0.05 ? 0.8 : 0);
+// pool surface height at x — slow swells + syrupy impact bumps
+function surfY(x, t) {
+  let y = poolY
+    + 1.3 * Math.sin(x * 0.026 + t * 0.0011)
+    + 0.7 * Math.sin(x * 0.058 - t * 0.00074);
+  if (melt > 0.45) y += (melt - 0.45) * 1.7 * Math.sin(x * 0.12 + t * 0.0043);
+  for (const im of impulses) {
+    const g = (x - im.x) / (9 + im.age * 30);
+    y -= im.amp * Math.exp(-g * g) * Math.cos(im.age * 5.5) * Math.exp(-im.age * 1.7);
   }
-  // the readout goes toxic as dissolution rises
-  meltValueEl.style.fill = melt > 0.001 ? 'var(--accent-bright)' : 'var(--dim)';
-  if (meltSlider) meltSlider.value = melt;
-  // wall paint-runs multiply and quicken
-  for (const [i, s] of meltStreaks.entries()) {
-    s.setAttribute('opacity', Math.max(0, (melt - 0.12 * i) * 0.55).toFixed(2));
-  }
-  cometA.style.animationDuration = `${(9 / (1 + melt * 1.6)).toFixed(2)}s`;
-  cometB.style.animationDuration = `${(14 / (1 + melt * 1.6)).toFixed(2)}s`;
+  return y;
 }
 
-// ---- overview: light the spray splats to match the pattern ----
+function spawnRipple(x, big) {
+  const rp = ripples.find((r) => !r.active) || ripples[0];
+  rp.active = true;
+  rp.x = x;
+  rp.r = big ? 2.5 : 1.5;
+  rp.age = 0;
+  rp.el.setAttribute('stroke-width', big ? 1 : 0.7);
+}
 
-function nodeState(i) {
+// ---- the four throw-ups pasted in the margins ----
+
+function buildTags() {
+  for (const [track, cfg] of Object.entries(TAG_POS)) {
+    // this tag's own paint-run, bleeding all the way down into the pool
+    // (the d is a stored prefix + the water line's y, re-joined per frame)
+    const runPrefix = `M ${cfg.x} ${cfg.y + 10} C ${cfg.x + 1.8} ${cfg.y + 40} ${cfg.x - 1.2} ${(cfg.y + POOL_BASE) / 2 + 30} ${cfg.x + 1} `;
+    const run = el('path', {
+      d: runPrefix + (POOL_BASE - 2),
+      fill: 'none', stroke: 'var(--accent2)', 'stroke-width': 0.5,
+      'stroke-linecap': 'round', opacity: 0.35,
+    });
+    space.appendChild(run);
+
+    const g = el('g', { class: 'tagup', transform: `translate(${cfg.x} ${cfg.y})`, 'data-track': track });
+    g.appendChild(el('circle', { cx: 0, cy: 2, r: 17, fill: 'transparent' })); // hit area
+    const ring = el('circle', {
+      class: 'select-ring', cx: 0, cy: 0, r: 11.5,
+      stroke: 'var(--cream)', 'stroke-width': 0.8, fill: 'none', opacity: 0,
+    });
+    g.appendChild(ring);
+
+    const scale = el('g', { class: 'tag-scale' });
+    scale.appendChild(el('circle', { cx: 0, cy: 0, r: 8, fill: 'url(#halo)', opacity: 0.8 }));
+    for (const d of TAG_GLYPHS[track]) {
+      scale.appendChild(el('path', {
+        d, fill: 'none', stroke: 'rgba(240,234,246,0.78)', 'stroke-width': 0.9,
+        'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+        filter: 'url(#glow)', transform: `scale(${cfg.s})`,
+      }));
+    }
+    g.appendChild(scale);
+
+    const label = el('text', { y: 15.5, 'text-anchor': 'middle', class: 'tag-label' });
+    label.textContent = cfg.label;
+    g.appendChild(label);
+
+    g.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      selectTrack(track);
+    });
+    selectionRings[track] = ring;
+    tagEls[track] = { g, scale, run, runPrefix };
+    space.appendChild(g);
+  }
+}
+
+// ---- the 16 drips = the 16 steps ----
+
+function buildDrips() {
+  // slide catenaries live in wall coordinates, under the strands
+  for (let i = 0; i < STEPS; i++) {
+    const th = el('path', {
+      d: '', fill: 'none', stroke: 'var(--accent2)', 'stroke-width': 0.7,
+      'stroke-linecap': 'round', opacity: 0, filter: 'url(#glow)',
+    });
+    space.appendChild(th);
+    slideThreads.push(th);
+  }
+
+  for (let i = 0; i < STEPS; i++) {
+    const x = DRIP_X0 + DRIP_DX * i;
+    const g = el('g', { class: 'drip', transform: `translate(${x} ${DRIP_TOP})` });
+
+    const line = el('path', {
+      d: '', fill: 'none', 'stroke-linecap': 'round',
+      stroke: 'rgba(240,234,246,0.3)', 'stroke-width': 0.45, opacity: 0.4,
+    });
+    g.appendChild(line);
+
+    const crown = el('path', {
+      d: CROWN_D, transform: 'translate(0 -4) scale(0.9)',
+      fill: 'none', stroke: 'var(--accent2)', 'stroke-width': 0.7,
+      'stroke-linejoin': 'round', opacity: 0, filter: 'url(#glow)',
+    });
+    g.appendChild(crown);
+
+    const dropWrap = el('g'); // state scale + tip position (attribute)
+    const bob = el('g', { class: 'drip-bob' }); // slow viscous sway (CSS)
+    bob.style.animationDelay = `${(-hash01(i * 31) * 4).toFixed(2)}s`;
+    const halo = el('circle', { cx: 0, cy: 3.6, r: 5.5, fill: 'url(#halo)', opacity: 0.6 });
+    const drop = el('path', { class: 'drip-drop', d: DROP_D, fill: 'url(#drop-lit)', stroke: 'var(--accent)', 'stroke-width': 0.4 });
+    bob.appendChild(halo);
+    bob.appendChild(drop);
+    dropWrap.appendChild(bob);
+    g.appendChild(dropWrap);
+
+    space.appendChild(g);
+    dripsArr.push({
+      g, line, dropWrap, drop, halo, crown, x,
+      sway: (hash01(i * 41 + 3) - 0.5) * 4,
+      lenOff: 12 + hash01(i * 3 + 1) * 14,
+      lenOn: 34 + hash01(i * 5 + 2) * 42,
+      curLen: 12,
+    });
+  }
+
+  // ghost strands between the real ones — surfacing only as MELT rises
+  for (let i = 0; i < 8; i++) {
+    const x = DRIP_X0 + DRIP_DX * (i * 2 + 0.5);
+    const len = 16 + hash01(i * 47 + 9) * 30;
+    const p = el('path', {
+      d: `M ${x} ${DRIP_TOP} C ${x + 1} ${DRIP_TOP + len * 0.4} ${x - 0.8} ${DRIP_TOP + len * 0.7} ${x + 0.4} ${DRIP_TOP + len}`,
+      fill: 'none', stroke: 'var(--accent2)', 'stroke-width': 0.4,
+      'stroke-linecap': 'round', opacity: 0,
+    });
+    space.appendChild(p);
+    ghostDrips.push(p);
+  }
+}
+
+// world-space y of a drip's tip (melt fattens and lowers the whole curtain)
+function tipWorldY(d) {
+  return DRIP_TOP + melt * 8 + d.curLen * (1 + melt * 0.3);
+}
+
+// ---- the glob playhead + its falling droplets ----
+
+function buildGlob() {
+  // droplets torn off by the glob, falling into the pool (pooled)
+  for (let i = 0; i < 6; i++) {
+    const p = el('path', { d: DROP_D, fill: 'url(#drop-lit)', opacity: 0, filter: 'url(#glow)' });
+    space.appendChild(p);
+    fallDrops.push({ el: p, active: false, x: 0, y: 0, vy: 0, big: false });
+  }
+
+  // the thread the glob pulls from its previous perch
+  glob.thread = el('path', {
+    d: '', fill: 'none', stroke: 'var(--accent2)',
+    'stroke-linecap': 'round', opacity: 0, filter: 'url(#glow)',
+  });
+  space.appendChild(glob.thread);
+
+  glob.g = el('g', { class: 'glob' });
+  glob.g.appendChild(el('circle', { cx: 0, cy: 0, r: 7.5, fill: 'url(#halo)', opacity: 0.9 }));
+  glob.body = el('ellipse', {
+    cx: 0, cy: 0, rx: 4.4, ry: 4,
+    fill: 'url(#glob-body)', stroke: 'var(--accent2)', 'stroke-width': 0.5,
+  });
+  glob.g.appendChild(glob.body);
+  space.appendChild(glob.g);
+  parkPlayhead();
+}
+
+// ---- the piece: MELT in bubble letters = the play toggle ----
+
+function buildPiece() {
+  sunEl = el('g', { class: 'sun' });
+
+  pieceHazeEl = el('ellipse', { cx: 160, cy: PIECE_Y, rx: 132, ry: 36, fill: 'url(#piece-haze)', opacity: 0.45 });
+  sunEl.appendChild(pieceHazeEl);
+
+  pieceGooEl = el('g', { class: 'goo' });
+  for (const L of LETTERS) {
+    const lg = el('g', { transform: `translate(${L.cx} ${PIECE_Y}) scale(${L.s})` });
+    // inner echo line of the throw-up: same outline, shrunk, violet
+    const inner = el('path', {
+      d: '', transform: 'scale(0.74)', fill: 'url(#piece-haze)', 'fill-opacity': 0.25,
+      stroke: 'var(--accent)', 'stroke-width': 0.8, opacity: 0.75,
+    });
+    // fat hollow outer outline, white line-art with glow
+    const outer = el('path', {
+      d: '', fill: 'none', stroke: 'rgba(240,234,246,0.88)',
+      'stroke-width': 1.3, 'stroke-linejoin': 'round', filter: 'url(#glow)',
+    });
+    lg.appendChild(inner);
+    lg.appendChild(outer);
+    pieceGooEl.appendChild(lg);
+    letterEls.push({ outer, inner });
+  }
+  sunEl.appendChild(pieceGooEl);
+
+  // full-width hit slab: the whole word is the button, and it never moves
+  sunEl.appendChild(el('rect', { x: 34, y: 24, width: 252, height: 66, fill: 'transparent' }));
+  sunEl.classList.add('loading');
+  sunEl.addEventListener('pointerdown', togglePlay);
+  space.appendChild(sunEl);
+}
+
+// one letter's molten outline for this frame: breath + hand wobble + slump
+function letterD(k, t) {
+  const L = LETTERS[k];
+  const breathe = playing ? 0.045 * Math.sin(t / 420 + k * 1.3) : 0.02 * Math.sin(t / 1400 + k);
+  const s = 1 + breathe + kickEnv * 0.1;
+  const pts = [];
+  for (let i = 0; i < L.pts.length; i++) {
+    const [px, py] = L.pts[i];
+    let x = px * s
+      + 0.8 * Math.sin(t / 610 + i * 2.1 + k * 2.4)
+      + melt * 1.1 * Math.sin(t / 270 + i * 3.1 + k);
+    let y = py * s + 0.7 * Math.sin(t / 760 + i * 1.7 + k * 3.3);
+    if (py > 0) {
+      // everything below the waist drags down — by 100% MELT the word
+      // hangs off itself, barely readable
+      const w = py / 22;
+      y += w * w * (1.6 + melt * 15 + kickEnv * 1.8);
+    }
+    pts.push({ x, y });
+  }
+  return gooPath(pts);
+}
+
+function buildScene() {
+  buildDefs();
+  buildWall();
+  buildPool();
+  buildTags();
+  buildDrips();
+  buildGlob();
+  buildPiece();
+  refreshOverview();
+}
+
+// ---- overview: dress each drip to match the pattern ----
+
+function dripState(i) {
   if (toggles.acid[i]) return acidAcc[i] ? 'acc' : 'acid';
   if (toggles.kick[i] || toggles.hatC[i] || toggles.hatO[i] || toggles.clap[i]) return 'on';
   return 'off';
 }
 
-function setNode(i) {
-  const { g, core, tail, crown, scaleWrap } = ringNodes[i];
-  const depth = parseFloat(g.dataset.depth);
-  const baseR = 2.2 + 1.4 * depth;
-  const st = nodeState(i);
-  if (st === 'off') {
-    core.setAttribute('fill', 'none');
-    core.setAttribute('stroke', 'rgba(240,234,246,0.4)');
-    core.setAttribute('stroke-width', 0.7);
-    scaleWrap.setAttribute('transform', 'scale(1)');
-    crown.setAttribute('opacity', 0);
-    tail.setAttribute('opacity', 0);
-    g.style.opacity = 0.6;
-  } else {
-    // lit = the splat glows violet and hangs a paint-run; an accented acid
-    // step blazes a size bigger and wears the crown
-    const acc = st === 'acc';
-    core.setAttribute('fill', acc ? 'url(#node-acc)' : 'url(#node-violet)');
-    core.setAttribute('stroke', acc ? 'var(--accent2)' : 'var(--accent)');
-    core.setAttribute('stroke-width', acc ? 1.1 : 0.9);
-    scaleWrap.setAttribute('transform', acc ? 'scale(1.5)' : 'scale(1.15)');
-    crown.setAttribute('opacity', acc ? 0.95 : 0);
-    const tl = acc ? 9 : 6;
-    tail.setAttribute('d', `M 0 ${(baseR * 0.9).toFixed(1)} Q 0.6 ${(baseR + tl * 0.45).toFixed(1)} 0.1 ${(baseR + tl).toFixed(1)}`);
-    tail.setAttribute('opacity', acc ? 0.85 : 0.6);
-    g.style.opacity = 1;
-  }
-  // slide streak: paint that ran along the wall from the previous splat to
-  // this one, sagging under gravity, whenever the step slides
+function setDrip(i) {
+  const d = dripsArr[i];
+  const st = dripState(i);
+  const lit = st !== 'off';
+  const len = lit ? d.lenOn * (st === 'acc' ? 1.1 : 1) : d.lenOff;
+  d.curLen = len;
+  // the strand: a lazy S-curve, rebuilt only when the pattern changes
+  d.line.setAttribute('d',
+    `M 0 0 C ${d.sway.toFixed(1)} ${(len * 0.35).toFixed(1)}`
+    + ` ${(-d.sway * 0.7).toFixed(1)} ${(len * 0.7).toFixed(1)}`
+    + ` ${(d.sway * 0.4).toFixed(1)} ${len.toFixed(1)}`);
+  d.line.setAttribute('stroke', lit ? 'var(--accent2)' : 'rgba(240,234,246,0.3)');
+  d.line.setAttribute('stroke-width', st === 'acc' ? 1 : lit ? 0.7 : 0.45);
+  d.line.setAttribute('opacity', lit ? 0.75 : 0.4);
+  // the drop swelling at the tip
+  const dropScale = st === 'acc' ? 1.5 : st === 'acid' ? 1.15 : 1;
+  d.dropWrap.setAttribute('transform', `translate(${(d.sway * 0.4).toFixed(1)} ${len.toFixed(1)}) scale(${dropScale})`);
+  d.drop.setAttribute('fill', st === 'acc' ? 'url(#drop-acc)' : 'url(#drop-lit)');
+  d.drop.style.display = lit ? '' : 'none';
+  d.halo.style.display = lit ? '' : 'none';
+  d.crown.setAttribute('opacity', st === 'acc' ? 0.9 : 0);
+  refreshSlide(i);
+}
+
+// the sagging catenary of light between a slide step and its neighbour
+function refreshSlide(i) {
   const th = slideThreads[i];
-  if (toggles.acid[i] && acidSlide[i]) {
-    const a = nodePos[(i - 1 + STEPS) % STEPS];
-    const b = nodePos[i];
-    const mx = (a.x + b.x) / 2 + 0.8;
-    const my = (a.y + b.y) / 2 + 6; // the run bellies downward
-    th.setAttribute('d', `M ${a.x.toFixed(1)} ${a.y.toFixed(1)} Q ${mx.toFixed(1)} ${my.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}`);
-    th.setAttribute('opacity', 0.55);
-  } else {
+  if (i === 0 || !(toggles.acid[i] && acidSlide[i])) {
     th.setAttribute('opacity', 0);
+    delete th.dataset.on;
+    return;
   }
+  const a = dripsArr[i - 1];
+  const b = dripsArr[i];
+  const ay = tipWorldY(a);
+  const by = tipWorldY(b);
+  const sag = Math.max(ay, by) + 8 + Math.abs(b.x - a.x) * 0.1;
+  th.setAttribute('d',
+    `M ${a.x.toFixed(1)} ${ay.toFixed(1)} Q ${((a.x + b.x) / 2).toFixed(1)} ${sag.toFixed(1)} ${b.x.toFixed(1)} ${by.toFixed(1)}`);
+  th.setAttribute('opacity', 0.55);
+  th.dataset.on = '1';
 }
 
 function refreshOverview() {
-  for (let i = 0; i < STEPS; i++) setNode(i);
+  for (let i = 0; i < STEPS; i++) setDrip(i);
+}
+
+// ---- MELT: the pool level is the macro ----
+
+function setMelt(value) {
+  melt = Math.min(1, Math.max(0, value));
+  send({ type: 'melt', value: melt });
+  meltValueEl.textContent = `${Math.round(melt * 100)}%`;
+  meltValueEl.style.fill = melt > 0.001 ? 'var(--accent-bright)' : 'var(--dim)';
+  poolTarget = POOL_BASE - melt * POOL_RANGE;
+  // the whole drip curtain runs heavier: fatter, longer, lower
+  const sx = (1 + melt * 0.55).toFixed(3);
+  const sy = (1 + melt * 0.3).toFixed(3);
+  const dy = (DRIP_TOP + melt * 8).toFixed(1);
+  for (const d of dripsArr) {
+    d.g.setAttribute('transform', `translate(${d.x} ${dy}) scale(${sx} ${sy})`);
+  }
+  for (const [i, th] of slideThreads.entries()) {
+    if (th.dataset.on) refreshSlide(i);
+  }
+  for (const [i, p] of ghostDrips.entries()) {
+    p.setAttribute('opacity', Math.max(0, (melt - 0.2 - i * 0.05) * 0.5).toFixed(2));
+  }
+  if (meltSlider) meltSlider.value = melt;
 }
 
 // ---- track selection ----
@@ -869,10 +824,11 @@ document.querySelectorAll('.close-btn').forEach((btn) => {
 async function togglePlay() {
   // flip the UI instantly — audio setup catches up in the background
   playing = !playing;
-  sunIcon.setAttribute('d', playing ? stopPath() : playPath());
+  sunEl.classList.toggle('playing', playing);
   if (playing) {
     lastStep = -1;
-    playheadG.style.opacity = 0.95;
+    glob.parked = false;
+    glob.g.style.opacity = 0.95;
   } else {
     parkPlayhead();
     clearEditorPlayhead();
@@ -920,33 +876,33 @@ masterVol.addEventListener('input', () => {
 
 const editorRows = ['kick', 'hatC', 'hatO', 'clap', 'acid'];
 let lastStep = -1;
-let lastDeg = 0;
+
+// the glob rests, dim, at step 0's root whenever the machine is stopped
+function parkPlayhead() {
+  glob.parked = true;
+  glob.x = glob.targetX = glob.fromX = dripsArr.length ? dripsArr[0].x : DRIP_X0;
+  glob.threadLife = 0;
+  glob.pluck = 0;
+  if (glob.g) glob.g.style.opacity = 0.28;
+}
 
 function movePlayhead(index) {
-  const p = nodePos[index];
-  // face the direction of travel; unwrap the angle so the drop turns the
-  // short way at the loop instead of spinning backwards
-  let deg = headingAt(index);
-  while (deg - lastDeg > 180) deg -= 360;
-  while (deg - lastDeg < -180) deg += 360;
-  lastDeg = deg;
-  const to = `translate(${p.x.toFixed(2)}px, ${p.y.toFixed(2)}px) rotate(${deg.toFixed(1)}deg)`;
-  // travel smoothly node to node, but snap on the loop wrap
+  const x = dripsArr[index].x;
   if (index <= lastStep) {
-    playheadG.style.transition = 'none';
-    playheadG.style.transform = to;
-    requestAnimationFrame(() => {
-      playheadG.style.transition = 'transform 90ms linear';
-    });
+    // loop wrap: no cross-screen crawl — the glob reappears at the left
+    glob.x = x;
+    glob.threadLife = 0;
   } else {
-    playheadG.style.transition = 'transform 90ms linear';
-    playheadG.style.transform = to;
+    // pull a thread from the old perch; it stretches, necks and snaps
+    glob.fromX = glob.targetX;
+    glob.threadLife = 1;
   }
+  glob.targetX = x;
+  glob.parked = false;
   lastStep = index;
 
-  // the can passes a LIT splat: SPRAY BURST — mist puffs out, a ripple
-  // ring blooms, and the splat stretches for an instant
-  if (nodeState(index) !== 'off') fireSplash(index, p);
+  // crossing a lit drip tears its drop off into the pool
+  if (dripState(index) !== 'off') shedDrop(index);
 
   pulse('kick', toggles.kick[index]);
   pulse('hat', toggles.hatC[index] || toggles.hatO[index]);
@@ -963,85 +919,195 @@ function movePlayhead(index) {
 
 function pulse(track, active) {
   if (!active) return;
-  const body = lumpEls[track].querySelector('.planet-scale') || lumpEls[track].querySelector('.planet-body');
-  body.classList.remove('hit');
-  void body.getBoundingClientRect(); // restart the animation
-  body.classList.add('hit');
+  const tag = tagEls[track];
+  tag.scale.classList.remove('hit');
+  void tag.scale.getBoundingClientRect(); // restart the animation
+  tag.scale.classList.add('hit');
   if (track === 'kick') {
-    kickEnv = 1; // the M bulges with the kick (decays in the rAF loop)
-    burstEl.classList.remove('go');
-    void burstEl.getBoundingClientRect();
-    burstEl.classList.add('go');
+    kickEnv = 1; // the word shudders; the pool answers
+    pushImpulse(glob.targetX, 1.1);
   }
 }
 
-function fireSplash(index, p) {
-  splashG.setAttribute('transform', `translate(${p.x.toFixed(2)} ${p.y.toFixed(2)})`);
-  // throw the mist at a fresh angle every burst
-  splashDrops.style.transform = `rotate(${(Math.random() * 360).toFixed(0)}deg)`;
-  splashG.classList.remove('go');
-  void splashG.getBoundingClientRect(); // restart the animations
-  splashG.classList.add('go');
-  // the struck splat stretches — びよん
-  const g = ringNodes[index].g;
-  g.classList.remove('boing');
-  void g.getBoundingClientRect();
-  g.classList.add('boing');
+function pushImpulse(x, amp) {
+  impulses.push({ x, amp, age: 0 });
+  if (impulses.length > 10) impulses.shift();
 }
 
-// ---- ambient motion: the wobbling M, paint-runs, drifting mist, ring waves ----
+// the glob passes a lit drip: its drop tears free and falls into the pool
+function shedDrop(index) {
+  const d = dripsArr[index];
+  const st = dripState(index);
+  // the hanging drop snaps back and slowly re-swells
+  d.drop.classList.remove('shed');
+  void d.drop.getBoundingClientRect();
+  d.drop.classList.add('shed');
+  // a free droplet takes over and falls
+  const f = fallDrops.find((p) => !p.active);
+  if (!f) return;
+  f.active = true;
+  f.big = st === 'acc';
+  f.x = d.x;
+  f.y = tipWorldY(d);
+  f.vy = 24;
+  f.el.setAttribute('fill', f.big ? 'url(#drop-acc)' : 'url(#drop-lit)');
+  f.el.setAttribute('opacity', 0.95);
+}
+
+// ---- ambient motion: everything obeys honey ----
 
 let lastFrame = 0;
 
-function animate(t) {
+function renderFrame(t) {
   // clamp dt so returning from a hidden tab doesn't jump the scene
   const dt = Math.min(lastFrame ? (t - lastFrame) / 1000 : 0, 0.1);
   lastFrame = t;
+  nowT = t;
 
   kickEnv = Math.max(0, kickEnv - dt * 6);
 
-  // the M's hand-drawn outline wobbles — re-pathed every frame (the only
-  // per-frame path regeneration in the scene, along with its drips)
-  const pts = corePoints(t);
-  coreBlobEl.setAttribute('d', blobPath(pts));
-  // the inner echo line of the throw-up: same letter, shrunk toward the
-  // (slumped) centroid
-  let mx = 0;
-  let my = 0;
-  for (const q of pts) {
-    mx += q.x;
-    my += q.y;
+  // the piece: four letter outlines re-pathed from wobble sines (the only
+  // per-frame path regeneration besides the pool surface and glob thread)
+  for (let k = 0; k < LETTERS.length; k++) {
+    const d = letterD(k, t);
+    letterEls[k].outer.setAttribute('d', d);
+    letterEls[k].inner.setAttribute('d', d); // shrunk by its own transform
   }
-  mx /= pts.length;
-  my /= pts.length;
-  coreInnerEl.setAttribute('d', blobPath(pts.map((q) => ({
-    x: mx + (q.x - mx) * 0.78,
-    y: my + (q.y - my) * 0.78,
-  }))));
-  // the halo breathes; at high MELT the glow itself wavers
-  const flicker = melt * 0.14 * Math.sin(t / 90) * Math.sin(t / 37);
-  sunHazeEl.setAttribute('opacity', (0.75 + kickEnv * 0.2 + flicker).toFixed(3));
-  sunHazeEl.style.transform = `scale(${(1 + 0.055 * Math.sin(t / 1700) + kickEnv * 0.08).toFixed(4)})`;
+  const flicker = melt * 0.12 * Math.sin(t / 95) * Math.sin(t / 41);
+  pieceHazeEl.setAttribute('opacity', Math.max(0, 0.45 + kickEnv * 0.25 + flicker).toFixed(3));
 
-  stepDrips(dt);
+  // the pool level oozes toward its target — never snaps
+  poolY += (poolTarget - poolY) * (1 - Math.exp(-dt * 3));
+  for (const im of impulses) im.age += dt;
+  while (impulses.length && impulses[0].age > 2.2) impulses.shift();
 
-  // the splat ring undulates as the world melts
-  if (melt > 0.01) {
-    const wob = melt * 0.035;
-    ringG.style.transform = `translate(0px, ${(melt * 2.5 * Math.sin(t / 640)).toFixed(2)}px) `
-      + `scale(${(1 + wob * Math.sin(t / 430)).toFixed(4)}, ${(1 + wob * 1.4 * Math.sin(t / 310 + 1.2)).toFixed(4)})`;
+  // surface line: 17 samples, midpoint-smoothed
+  const ys = [];
+  for (let x = 0; x <= W; x += 20) ys.push(surfY(x, t));
+  const surfD = wavePath(0, 20, ys);
+  poolLineEl.setAttribute('d', surfD);
+  poolEchoEl.setAttribute('d', surfD);
+  poolFillEl.setAttribute('d', `${surfD} L ${W} ${H + 2} L 0 ${H + 2} Z`);
+  meltValueEl.setAttribute('y', (poolY - 6).toFixed(1));
+
+  // the four paint-runs always reach exactly down to the water
+  for (const { run, runPrefix } of Object.values(tagEls)) {
+    run.setAttribute('d', runPrefix + (poolY - 1).toFixed(1));
+  }
+
+  // syrupy ripples: fast bloom, then a long slow crawl outward
+  for (const rp of ripples) {
+    if (!rp.active) continue;
+    rp.age += dt;
+    rp.r += dt * 26 * Math.exp(-rp.age * 2.2);
+    const op = 0.5 * Math.max(0, 1 - rp.age / 1.6);
+    if (rp.age > 1.6) {
+      rp.active = false;
+      rp.el.setAttribute('opacity', 0);
+      continue;
+    }
+    rp.el.setAttribute('cx', rp.x.toFixed(1));
+    rp.el.setAttribute('cy', surfY(rp.x, t).toFixed(1));
+    rp.el.setAttribute('rx', rp.r.toFixed(1));
+    rp.el.setAttribute('ry', (rp.r * 0.28).toFixed(1));
+    rp.el.setAttribute('opacity', op.toFixed(2));
+  }
+
+  // high MELT: the pool seethes — bubbles rise and pop
+  if (melt > 0.55 && Math.random() < dt * (melt - 0.5) * 9) {
+    const b = bubbles.find((q) => !q.active);
+    if (b) {
+      b.active = true;
+      b.pop = 0;
+      b.x = 18 + Math.random() * (W - 36);
+      b.y = poolY + 7 + Math.random() * 13;
+      b.r = 0.8 + Math.random() * 1.4;
+      b.vy = 4 + Math.random() * 5;
+    }
+  }
+  for (const b of bubbles) {
+    if (!b.active) continue;
+    if (b.pop > 0) {
+      b.pop -= dt;
+      b.r += dt * 14;
+      b.el.setAttribute('r', b.r.toFixed(1));
+      b.el.setAttribute('opacity', Math.max(0, b.pop * 3).toFixed(2));
+      if (b.pop <= 0) {
+        b.active = false;
+        b.el.setAttribute('opacity', 0);
+      }
+      continue;
+    }
+    b.y -= b.vy * dt;
+    const sy = surfY(b.x, t);
+    if (b.y <= sy + 1) {
+      b.pop = 0.3; // burst at the surface
+      pushImpulse(b.x, 0.6);
+    }
+    b.el.setAttribute('cx', b.x.toFixed(1));
+    b.el.setAttribute('cy', b.y.toFixed(1));
+    b.el.setAttribute('r', b.r.toFixed(1));
+    b.el.setAttribute('opacity', 0.5);
+  }
+
+  // falling droplets: heavy, stretching as they gain speed
+  for (const f of fallDrops) {
+    if (!f.active) continue;
+    f.vy += 420 * dt;
+    f.y += f.vy * dt;
+    const stretch = 1 + Math.min(0.7, f.vy * 0.004);
+    const size = f.big ? 1.5 : 1.1;
+    f.el.setAttribute('transform',
+      `translate(${f.x.toFixed(1)} ${f.y.toFixed(1)}) scale(${(size / Math.sqrt(stretch)).toFixed(2)} ${(size * stretch).toFixed(2)})`);
+    if (f.y >= surfY(f.x, t) - 2) {
+      // landing: a heavy splash and a slow syrupy ring
+      f.active = false;
+      f.el.setAttribute('opacity', 0);
+      pushImpulse(f.x, f.big ? 3.4 : 2.3);
+      spawnRipple(f.x, f.big);
+    }
+  }
+
+  // the glob: crawls with lag, stretches while moving, plucks back on arrival
+  const gy = DRIP_TOP + melt * 8 - 1;
+  glob.x += (glob.targetX - glob.x) * (1 - Math.exp(-dt * 16));
+  const rem = glob.targetX - glob.x;
+  const stretch = Math.min(1.1, Math.abs(rem) * 0.09);
+  glob.pluck = Math.max(0, glob.pluck - dt * 3);
+  const jiggle = 1 + 0.3 * glob.pluck * Math.sin((1 - glob.pluck) * 26);
+  glob.body.setAttribute('rx', (4.4 * (1 + stretch * 0.65)).toFixed(2));
+  glob.body.setAttribute('ry', (4 * (1 - stretch * 0.26) * jiggle).toFixed(2));
+  glob.g.setAttribute('transform', `translate(${glob.x.toFixed(2)} ${gy.toFixed(2)})`);
+  if (glob.threadLife > 0) {
+    // the pulled thread: sags, necks as it thins, then snaps — ぷるん
+    glob.threadLife -= dt * (Math.abs(rem) < 2.5 ? 9 : 1.2);
+    if (glob.threadLife <= 0) {
+      glob.threadLife = 0;
+      glob.pluck = 1;
+      glob.thread.setAttribute('opacity', 0);
+    } else {
+      const span = glob.x - glob.fromX;
+      const sag = Math.min(9, Math.abs(span) * 0.25 + 2);
+      glob.thread.setAttribute('d',
+        `M ${glob.fromX.toFixed(1)} ${gy.toFixed(1)} Q ${(glob.fromX + span / 2).toFixed(1)} ${(gy + sag).toFixed(1)} ${glob.x.toFixed(1)} ${gy.toFixed(1)}`);
+      glob.thread.setAttribute('stroke-width', (0.5 + 1.1 * glob.threadLife).toFixed(2));
+      glob.thread.setAttribute('opacity', (0.55 * glob.threadLife).toFixed(2));
+    }
   } else {
-    ringG.style.transform = '';
+    glob.thread.setAttribute('opacity', 0);
   }
 
-  // mist particles wander freely; dissolution stirs them up
-  const dotAmp = 1 + melt * 1.4;
-  for (const m of dotMeta) {
+  // mist drifts; dissolution stirs it
+  const mistAmp = 1 + melt * 1.3;
+  for (const m of mistPts) {
     const ts = t / 1000;
-    m.el.setAttribute('cx', (m.bx + m.ax * dotAmp * Math.sin(ts * m.w + m.ph)).toFixed(2));
-    m.el.setAttribute('cy', (m.by + m.ay * dotAmp * Math.cos(ts * m.w * 0.8 + m.ph * 1.7)).toFixed(2));
+    m.el.setAttribute('cx', (m.bx + m.ax * mistAmp * Math.sin(ts * m.w + m.ph)).toFixed(2));
+    m.el.setAttribute('cy', (m.by + m.ay * mistAmp * Math.cos(ts * m.w * 0.8 + m.ph * 1.7)).toFixed(2));
   }
+}
 
+function animate(t) {
+  renderFrame(t);
   requestAnimationFrame(animate);
 }
 requestAnimationFrame(animate);
@@ -1243,7 +1309,7 @@ document.querySelectorAll('.gen-btn').forEach((btn) => {
   btn.addEventListener('click', () => regenerate(btn.dataset.gen));
 });
 
-// jump straight to a layer's editor — no need to chase a drifting lump
+// jump straight to a layer's editor
 document.querySelectorAll('.jump-btn').forEach((btn) => {
   btn.addEventListener('pointerdown', (e) => {
     e.preventDefault();
@@ -1251,7 +1317,7 @@ document.querySelectorAll('.jump-btn').forEach((btn) => {
   });
 });
 
-// ---- MELT slider (mirrors the melting-tag drag) ----
+// ---- MELT slider (mirrors the pool-surface drag) ----
 
 if (meltSlider) {
   meltSlider.addEventListener('input', () => setMelt(parseFloat(meltSlider.value)));
@@ -1382,8 +1448,9 @@ function setMute(track, value) {
   document.querySelectorAll(`.mute-btn[data-mute="${track}"]`).forEach((b) => {
     b.classList.toggle('muting', value);
   });
-  // the layer's lump sinks into the dark while muted
-  lumpEls[track].style.opacity = value ? 0.18 : '';
+  // the throw-up sinks into the wall and its paint-run stops bleeding
+  tagEls[track].g.style.opacity = value ? 0.18 : '';
+  tagEls[track].run.style.opacity = value ? 0 : '';
 }
 
 document.querySelectorAll('.mute-btn').forEach((btn) => {
@@ -1423,6 +1490,10 @@ buildDotRow('acc');
 buildDotRow('slide');
 restore(); // bring back saved patterns before anything is heard
 selectTrack('kick');
+// paint one frame synchronously: rAF is paused in hidden tabs, and the
+// letters/pool have no path data until the first render
+renderFrame(0);
+window.__renderFrame = renderFrame; // headless-QA hook (rAF-less frame step)
 // start closed on mobile
 document.getElementById('editor').classList.remove('open');
 document.body.classList.remove('editor-open');
