@@ -25,10 +25,15 @@
 //            with a slow, syrupy ripple. Stopped, the glob rests dim at
 //            step 0's drip point.
 //   bottom = the POOL of molten paint, full width = the MELT macro. A low-
-//            frequency luminous surface line; drag it up and down to set the
-//            level = melt %. High MELT: the mass slumps toward centre
-//            screen, the drops run fat and long, the pool seethes with
-//            bubbles, the glow wavers.
+//            frequency luminous surface line. The main control is the MELT
+//            TAP poking out of the right wall above the pool's highest
+//            level: swipe it up/down to open it — the cross handle turns
+//            with the level and a luminous pour (thickness/brightness ∝
+//            melt) falls from its spout to the living surface. Closed, it
+//            only drips now and then. Dragging the surface itself still
+//            works as a secondary control. High MELT: the mass slumps
+//            toward centre screen, the drops run fat and long, the pool
+//            seethes with bubbles, the glow wavers.
 //   margins = four LAB VESSELS shelved at their own heights (never
 //            floating): KICK = an Erlenmeyer flask, HATS = two test tubes
 //            in a rack, CLAP = a beaker, ACID = a dropper with a drop at
@@ -153,6 +158,8 @@ const DRIP_X0 = 48; // the 16 drip points along the mass's lower edge
 const DRIP_DX = (272 - DRIP_X0) / (STEPS - 1);
 const POOL_BASE = 233; // pool surface at melt = 0
 const POOL_RANGE = 31; // how far the level rises by melt = 1
+const MELT_SPOUT_X = 305; // the MELT tap's spout centre — its pour falls here
+const MELT_SPOUT_Y = 195; // spout mouth, above the pool's highest level (202)
 
 const space = document.getElementById('space');
 
@@ -281,7 +288,8 @@ const TAG_POS = {
   kick: { x: 20, y: 112, s: 1.05, label: 'KICK' },
   hat: { x: 300, y: 104, s: 0.92, label: 'HATS' },
   clap: { x: 21, y: 166, s: 0.95, label: 'CLAP' },
-  acid: { x: 299, y: 158, s: 1.0, label: 'ACID' },
+  // shifted inboard so the bottom-right band belongs to the MELT faucet
+  acid: { x: 270, y: 152, s: 1.0, label: 'ACID' },
 };
 
 // ---- scene state ----
@@ -307,6 +315,9 @@ const tagEls = {}; // track -> { g, scale, liq, run, runPrefix }
 const selectionRings = {};
 
 let meltValueEl = null;
+let meltFaucetHandleEl = null; // the MELT tap's cross handle, turns with the level
+let meltStreamEl = null; // the luminous pour from the MELT tap's spout to the surface
+let meltIdleDripsEl = null; // the closed tap's occasional drips (CSS loop)
 let poolFillEl = null;
 let poolLineEl = null;
 let poolEchoEl = null;
@@ -486,12 +497,8 @@ function buildPool() {
   space.appendChild(poolEchoEl);
   space.appendChild(poolLineEl);
 
-  // level readout at the surface's right end
-  meltValueEl = el('text', { x: 306, y: POOL_BASE - 6, 'text-anchor': 'end', class: 'melt-value' });
-  meltValueEl.textContent = '0%';
-  space.appendChild(meltValueEl);
-
-  // drag the surface up/down = MELT amount
+  // drag the surface up/down = MELT amount (secondary control — the main
+  // one is the MELT tap on the right wall; the % readout lives there too)
   const hit = el('rect', { class: 'pool-hit', x: 0, y: 186, width: W, height: H - 186, fill: 'transparent' });
   hit.addEventListener('pointerdown', (e) => {
     e.stopPropagation();
@@ -828,6 +835,101 @@ function buildFaucet() {
   space.appendChild(faucetEl);
 }
 
+// ---- the MELT tap (bottom-right) = the melt macro ----
+// A second white line-art tap poking out of the right wall — pipe, downward
+// spout aimed at the pool, cross handle — sitting above the pool's highest
+// level (spout mouth 195 < 202 = melt-1 surface) and clear of the ACID
+// dropper, its overflow run (x≈300) and the old readout. The gesture is a
+// vertical SWIPE (pointerdown + move), not the GEN tap's tap: swiping up
+// opens it — the handle turns with the level (set in setMelt, mirrored by
+// #melt-slider too since that path also runs setMelt) and a luminous pour
+// (thickness/brightness ∝ melt) falls from the spout to the living surface
+// (its foot re-glued in renderFrame). Closed, it only drips now and then.
+// The serif MELT label and the % readout live under the handle, right of
+// the stream. Dragging the pool surface stays as a secondary control.
+
+function buildMeltFaucet() {
+  const g = el('g', { class: 'melt-faucet' });
+  const stroke = 'rgba(240,234,246,0.8)';
+
+  // pipe out of the right wall turning into a downward spout (one outline)
+  g.appendChild(el('path', {
+    d: 'M 320 181.5 L 312 181.5 Q 303 181.5 303 190 L 303 195 L 307 195 L 307 190 Q 307 186 312 186 L 320 186',
+    fill: 'none', stroke, 'stroke-width': 0.9,
+    'stroke-linecap': 'round', 'stroke-linejoin': 'round', filter: 'url(#glow)',
+  }));
+  // stem up to the cross handle (the wrap centres the axle, so the
+  // rotate() written in setMelt turns the handle in place)
+  g.appendChild(el('path', {
+    d: 'M 316.5 176 L 316.5 181.5', fill: 'none', stroke, 'stroke-width': 0.9, 'stroke-linecap': 'round',
+  }));
+  const handleWrap = el('g', { transform: 'translate(316.5 172.5)' });
+  meltFaucetHandleEl = el('g');
+  meltFaucetHandleEl.appendChild(el('path', {
+    d: 'M -3.5 0 L 3.5 0 M 0 -3.5 L 0 3.5',
+    fill: 'none', stroke, 'stroke-width': 0.9, 'stroke-linecap': 'round', filter: 'url(#glow)',
+  }));
+  meltFaucetHandleEl.appendChild(el('circle', {
+    cx: 0, cy: 0, r: 1.3, fill: 'none', stroke, 'stroke-width': 0.9,
+  }));
+  handleWrap.appendChild(meltFaucetHandleEl);
+  g.appendChild(handleWrap);
+
+  // the pour: body (width/opacity) set in setMelt, foot follows the
+  // surface every frame
+  meltStreamEl = el('line', {
+    x1: MELT_SPOUT_X, y1: MELT_SPOUT_Y + 0.5, x2: MELT_SPOUT_X, y2: POOL_BASE,
+    stroke: 'var(--accent2)', 'stroke-width': 0.7, 'stroke-linecap': 'round',
+    opacity: 0, filter: 'url(#glow)',
+  });
+  g.appendChild(meltStreamEl);
+
+  // closed, the tap still lets a drop go now and then (CSS loop,
+  // hidden while any pour is running)
+  meltIdleDripsEl = el('g');
+  for (let i = 0; i < 2; i++) {
+    const dr = el('circle', {
+      class: 'faucet-drip', cx: MELT_SPOUT_X, cy: MELT_SPOUT_Y + 2.5, r: 0.8,
+      fill: 'var(--accent2)', opacity: 0, filter: 'url(#glow)',
+    });
+    dr.style.animationDelay = `${(1.1 + i * 1.7).toFixed(2)}s`;
+    meltIdleDripsEl.appendChild(dr);
+  }
+  g.appendChild(meltIdleDripsEl);
+
+  // serif MELT label + % readout stacked left of the spout, clear of the
+  // stream and above the highest waterline — the pair reads as the
+  // faucet's own nameplate instead of colliding with the ACID label
+  const label = el('text', { x: 297, y: 188, 'text-anchor': 'end', class: 'melt-tag' });
+  label.textContent = 'MELT';
+  g.appendChild(label);
+  meltValueEl = el('text', { x: 297, y: 195.5, 'text-anchor': 'end', class: 'melt-value' });
+  meltValueEl.textContent = '0%';
+  g.appendChild(meltValueEl);
+
+  // hit slab kept snug so the ACID dropper above keeps its tap area
+  g.appendChild(el('rect', { x: 302, y: 166, width: 18, height: 32, fill: 'transparent' }));
+
+  // the swipe: vertical drag opens/closes the tap (up = open = level rises)
+  g.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    try {
+      g.setPointerCapture(e.pointerId);
+    } catch {}
+    const startY = e.clientY;
+    const start = melt;
+    const onMove = (ev) => setMelt(start + (startY - ev.clientY) / 110);
+    const onUp = () => {
+      g.removeEventListener('pointermove', onMove);
+      g.removeEventListener('pointerup', onUp);
+    };
+    g.addEventListener('pointermove', onMove);
+    g.addEventListener('pointerup', onUp);
+  });
+  space.appendChild(g);
+}
+
 // open Catmull-Rom polyline -> cubic Bezier (the echo line primitive)
 function openPath(pts) {
   const n = pts.length;
@@ -877,6 +979,7 @@ function buildScene() {
   buildGlob();
   buildPiece();
   buildFaucet();
+  buildMeltFaucet();
   refreshOverview();
 }
 
@@ -930,6 +1033,15 @@ function setMelt(value) {
   meltValueEl.style.fill = melt > 0.001 ? 'var(--accent-bright)' : 'var(--dim)';
   poolTarget = POOL_BASE - melt * POOL_RANGE;
   if (meltSlider) meltSlider.value = melt;
+  // the tap answers: the handle turns with the level, the pour fattens
+  // and brightens, the idle drip only lives while the tap is closed
+  // (this runs for both the swipe and the #melt-slider, which calls here)
+  if (meltFaucetHandleEl) {
+    meltFaucetHandleEl.setAttribute('transform', `rotate(${(melt * 270).toFixed(1)})`);
+    meltStreamEl.setAttribute('stroke-width', (0.7 + 2.6 * melt).toFixed(2));
+    meltStreamEl.setAttribute('opacity', melt > 0.001 ? (0.3 + 0.55 * melt).toFixed(2) : 0);
+    meltIdleDripsEl.style.display = melt > 0.001 ? 'none' : '';
+  }
   // everything else — the mass slumping toward centre screen, drops
   // fattening and lengthening, films sagging deeper — reads `melt`
   // directly inside the per-frame edge and scale math
@@ -1160,7 +1272,14 @@ function renderFrame(t) {
   poolLineEl.setAttribute('d', surfD);
   poolEchoEl.setAttribute('d', surfD);
   poolFillEl.setAttribute('d', `${surfD} L ${W} ${H + 2} L 0 ${H + 2} Z`);
-  meltValueEl.setAttribute('y', (poolY - 6).toFixed(1));
+
+  // the MELT tap's pour: its foot rides the living surface (one attribute
+  // per frame); where it lands, the pool answers now and then
+  meltStreamEl.setAttribute('y2', (surfY(MELT_SPOUT_X, t) + 0.6).toFixed(1));
+  if (melt > 0.03 && Math.random() < dt * (0.4 + melt * 1.1)) {
+    pushImpulse(MELT_SPOUT_X, 0.4 + melt * 0.8);
+    if (Math.random() < 0.3) spawnRipple(MELT_SPOUT_X, false);
+  }
 
   // the four paint-runs always reach exactly down to the water
   for (const { run, runPrefix } of Object.values(tagEls)) {

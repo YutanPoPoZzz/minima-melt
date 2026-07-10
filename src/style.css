@@ -405,10 +405,24 @@ main {
   touch-action: none;
 }
 
+/* the MELT tap (bottom-right): swipe up/down to open/close it */
+.melt-faucet {
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.melt-tag {
+  font-family: inherit;
+  font-size: 5px;
+  letter-spacing: 0.06em;
+  fill: var(--dim);
+}
+
+/* the % readout, at home under the tap's pipe now */
 .melt-value {
   font-family: inherit;
-  font-size: 9.5px;
-  letter-spacing: 0.12em;
+  font-size: 5px;
+  letter-spacing: 0.06em;
   fill: var(--dim);
 }
 
