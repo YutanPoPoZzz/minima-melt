@@ -1,14 +1,15 @@
 /* minima melt — molten acid machine, rendered in the minima series'
    light vocabulary: near-black background, strong film grain, vignette,
    EB Garamond serif, glowing white line-art / luminous orbs only — no fills,
-   no grey, no realistic illustration. The scene is a GRAVITY CASCADE WALL,
-   read top to bottom: bubble-letter "MELT" across the top (= play toggle),
-   sixteen viscous drips falling from its lower edge (= the steps), a glob
-   of light crawling the drip roots (= playhead), a luminous pool of molten
-   paint at the bottom (= the MELT macro, dragged up and down), and four
-   small throw-ups pasted in the margins (= the tracks). Every motion obeys
-   honey: stretch, neck, tear, wobble back. Accents: toxic violet + pale
-   lavender, used sparingly. Single screen on phone and desktop. */
+   no grey, no realistic illustration. The scene is a GRAVITY CASCADE,
+   read top to bottom: a huge molten mass hanging from the top of the
+   screen (= play toggle), sixteen drops swelling straight out of its
+   lower edge (= the steps), a glob of light crawling inside that edge
+   (= playhead), a luminous pool of molten paint at the bottom (= the MELT
+   macro, dragged up and down), and four lab vessels shelved in the
+   margins (= the tracks). Every motion obeys honey: stretch, neck, tear,
+   wobble back. Accents: toxic violet + pale lavender, used sparingly.
+   Single screen on phone and desktop. */
 
 @font-face {
   font-family: 'EB Garamond';
@@ -30,7 +31,7 @@
   /* toxic molten violet — the melt spot accent */
   --accent: #a34dff;
   --accent-bright: #d9b3ff;
-  /* pale lavender glow — drip threads, slide strings */
+  /* pale lavender glow — drop rims, slide films */
   --accent2: #d9b3ff;
   --accent2-bright: #efe2ff;
   --cream: var(--light); /* name kept for series compatibility */
@@ -281,13 +282,13 @@ main {
   display: block;
 }
 
-/* ---- the piece: bubble-letter MELT = play toggle ---- */
+/* ---- the molten mass = play toggle ---- */
 
 .sun {
   cursor: pointer;
 }
 
-/* while the audio engine loads, the word breathes low against the wall */
+/* while the audio engine loads, the mass breathes low against the dark */
 .sun.loading .goo {
   opacity: 0.3;
   animation: goo-load 1.3s ease-in-out infinite;
@@ -311,7 +312,7 @@ main {
   }
 }
 
-/* ---- the drips: hanging drops sway like cold syrup ---- */
+/* ---- the drip points: hanging drops quiver like cold syrup ---- */
 
 .drip-bob {
   animation: drip-bob 3.8s ease-in-out infinite;
@@ -323,7 +324,7 @@ main {
   }
 }
 
-/* a shed drop snaps back to the strand, then slowly re-swells — ぷるん */
+/* a shed drop snaps back into the edge, then slowly re-swells — ぷるん */
 .drip-drop {
   transform-box: fill-box;
   transform-origin: 50% 0%;
@@ -357,10 +358,22 @@ main {
   pointer-events: none;
 }
 
-/* ---- the four throw-ups pasted in the margins ---- */
+/* ---- the four lab vessels shelved in the margins ---- */
 
 .tagup {
   cursor: pointer;
+}
+
+/* micro bubbles suspended in the glassware liquids */
+.vial-bub {
+  animation: vial-bub 2.6s ease-in-out infinite;
+}
+
+@keyframes vial-bub {
+  50% {
+    transform: translateY(-1px);
+    opacity: 0.85;
+  }
 }
 
 .tag-scale {

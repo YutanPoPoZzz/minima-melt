@@ -1,36 +1,41 @@
 // minima melt — UI thread. Third-generation art direction: the GRAVITY
-// CASCADE WALL. The whole screen is one melting graffiti wall, read top to
-// bottom, ruled by a single force — gravity — and one material physics:
-// high-viscosity liquid (stretch, neck, tear, wobble back; honey time
-// constants everywhere).
+// CASCADE. The whole screen is one melting space, read top to bottom, ruled
+// by a single force — gravity — and one material physics: high-viscosity
+// liquid (stretch, neck, tear, wobble back; honey time constants
+// everywhere).
 //
-//   top    = the PIECE: bubble-letter "MELT", four fat hollow throw-up
-//            letters across the full width. Hand wobble, lower edges always
-//            threading down. = play/stop toggle (pointerdown, class `sun`).
-//            While playing it pulses; every kick shudders the whole word and
-//            sends a ripple across the pool below.
-//   middle = 16 DRIPS falling from the letters' lower edge = the 16 steps.
-//            Unlit: a faint thin strand. Lit: the strand's tip swells into a
-//            heavy violet-glowing drop (each a random length). An accented
-//            acid step hangs a fatter, brighter drop and wears a tiny crown
-//            at its root; a slide step is joined to its neighbour's strand
-//            by a sagging catenary of light.
-//   playhead = a VISCOUS GLOB crawling left to right along the drip roots,
-//            pulling a thread from its last position that stretches, necks
-//            and snaps — then the glob wobbles back into shape. Passing a
-//            lit drip tears that drop off: it falls, lands heavy, and the
-//            pool answers with a slow, syrupy ripple. Stopped, the glob
-//            rests dim at step 0's root.
+//   top    = the MASS: a huge sheet of molten goo hanging from the top of
+//            the screen, full width, its top running off-frame. Its lower
+//            edge is an uneven chain of heavy lobes, always slowly rolling.
+//            = play/stop toggle (pointerdown, class `sun`). While playing
+//            it pulses; every kick shudders the whole mass and sends a
+//            ripple across the pool below.
+//   middle = 16 DRIP POINTS spaced along the mass's lower edge = the 16
+//            steps. No strands: each is a nipple on the edge itself.
+//            Unlit: a barely-there swelling. Lit: a heavy violet-glowing
+//            drop bulges straight out of the edge (each its own random
+//            size and droop). An accented acid step hangs a fatter,
+//            brighter drop from an engorged root; a slide step is bridged
+//            to its neighbour by a sagging film of goo — a liquid bridge.
+//   playhead = a VISCOUS GLOB crawling left to right inside the lower edge
+//            (the edge swells around it), pulling a thread from its last
+//            position that stretches, necks and snaps — then the glob
+//            wobbles back into shape. Passing a lit drip point it squeezes
+//            that drop off: it falls, lands heavy, and the pool answers
+//            with a slow, syrupy ripple. Stopped, the glob rests dim at
+//            step 0's drip point.
 //   bottom = the POOL of molten paint, full width = the MELT macro. A low-
 //            frequency luminous surface line; drag it up and down to set the
-//            level = melt %. High MELT: the letters slump toward
-//            unreadability, the drips run fat and multiply, the pool seethes
-//            with bubbles, the wall's glow wavers.
-//   margins = four small THROW-UPS pasted on the wall (never floating):
-//            KICK = a wildstyle arrow, HATS = a sparkle star, CLAP = "!",
-//            ACID = a crown — each at its own height, each bleeding its own
-//            thin paint-run all the way down into the pool. Tap to edit;
-//            muting dims it and its run stops.
+//            level = melt %. High MELT: the mass slumps toward centre
+//            screen, the drops run fat and long, the pool seethes with
+//            bubbles, the glow wavers.
+//   margins = four LAB VESSELS shelved at their own heights (never
+//            floating): KICK = an Erlenmeyer flask, HATS = two test tubes
+//            in a rack, CLAP = a beaker, ACID = a dropper with a drop at
+//            its tip — each holding a violet-glowing liquid (surface line +
+//            micro bubbles), each bleeding a thin overflow all the way down
+//            into the pool. Tap to edit; muting quenches the liquid's glow
+//            and its run stops.
 //
 // Owns the AudioContext and messages the melt engine in the AudioWorklet.
 
@@ -144,9 +149,7 @@ async function ensureAudio() {
 
 const W = 320;
 const H = 260;
-const PIECE_Y = 57; // centreline of the bubble letters
-const DRIP_TOP = 84; // where the 16 strands root, under the letters
-const DRIP_X0 = 48;
+const DRIP_X0 = 48; // the 16 drip points along the mass's lower edge
 const DRIP_DX = (272 - DRIP_X0) / (STEPS - 1);
 const POOL_BASE = 233; // pool surface at melt = 0
 const POOL_RANGE = 31; // how far the level rises by melt = 1
@@ -194,73 +197,86 @@ function wavePath(x0, dx, ys) {
   return d;
 }
 
-// ---- the piece: bubble letters M E L T ----
-// Each letter is a closed control-point loop, inflated by gooPath and
-// re-pathed every frame with hand wobble + melt slump. Local box ~48x44.
+// ---- the molten mass: a huge sheet of goo hanging from the top edge ----
+// One closed outline regenerated every frame: the top runs off-frame, the
+// lower edge is an uneven chain of heavy lobes sampled exactly at the 16
+// drip points (so every drop hangs from the true edge), plus one filler at
+// each margin and two off-screen corners — 20 points total.
 
-const LETTERS = [
-  {
-    cx: 70,
-    s: 0.98,
-    pts: [
-      [-20, 20], [-24, 4], [-20, -13], [-10, -21], [0, -9], [10, -21],
-      [20, -13], [24, 4], [20, 20], [11, 19], [7, 2], [0, 11], [-7, 2], [-11, 19],
-    ],
-  },
-  {
-    cx: 130,
-    s: 0.9,
-    pts: [
-      [-19, -20], [5, -22], [15, -17], [15, -11], [-2, -9], [-2, -4], [9, -6],
-      [13, 0], [9, 6], [-2, 4], [-2, 9], [15, 11], [15, 17], [5, 22], [-19, 20], [-23, 0],
-    ],
-  },
-  {
-    cx: 190,
-    s: 0.93,
-    pts: [
-      [-15, -21], [-4, -22], [-2, -12], [-3, 3], [2, 7], [13, 6], [20, 12],
-      [16, 21], [-7, 22], [-19, 14], [-21, -12],
-    ],
-  },
-  {
-    cx: 250,
-    s: 0.95,
-    pts: [
-      [-22, -22], [0, -24], [22, -22], [23, -14], [11, -9], [8, 3], [9, 14],
-      [2, 22], [-6, 15], [-8, 3], [-10, -9], [-23, -14],
-    ],
-  },
-];
+const BLOB_EDGE = 62; // resting mean height of the lower edge
+const BLOB_OFF = 26; // how far the sheet's sides and top run off-frame
 
-// the hanging drop at a drip's tip: attach point at 0,0, bulb below
+// lower-edge height at x for this frame: static heavy lobes + slow viscous
+// wobble + MELT slump (sagging hardest at centre screen) + kick shudder
+function blobEdgeBase(x, t) {
+  let y = BLOB_EDGE
+    + 6.5 * Math.sin(x * 0.03 + 1.6)
+    + 4.0 * Math.sin(x * 0.0128 + 4.2)
+    + 2.4 * Math.sin(x * 0.069 + 0.7)
+    + 2.0 * Math.sin(t / 940 + x * 0.021)
+    + 1.0 * Math.sin(t / 520 - x * 0.044);
+  if (playing) y += 1.4 * Math.sin(t / 300 + x * 0.05); // unhurried pulse
+  const cw = Math.exp(-(((x - 160) / 120) ** 2));
+  y += melt * (26 * (0.32 + 0.68 * cw) + 5 * Math.sin(x * 0.052 + t / 680));
+  y += kickEnv * 2.4 * Math.sin(t / 26 + x * 0.09);
+  return y;
+}
+
+// the glob rides inside the edge: the goo swells locally around it
+function globBump(x) {
+  const g = (x - glob.x) / 11;
+  return (glob.parked ? 1.4 : 3.4) * Math.exp(-g * g);
+}
+
+// the hanging drop at a drip point: attach point at 0,0, bulb below
 const DROP_D = 'M 0 0 C 2.4 2.2 2.9 4.6 0 7.2 C -2.9 4.6 -2.4 2.2 0 0 Z';
 
-// tiny crown worn at the root of an accented drip
-const CROWN_D = 'M -2.8 1.2 L -2.8 -1.8 L -1.3 -0.4 L 0 -2.6 L 1.3 -0.4 L 2.8 -1.8 L 2.8 1.2 Z';
-
-// the four wall throw-ups: one-stroke graffiti glyphs, local unit ~14px tall
-const TAG_GLYPHS = {
-  // KICK: a wildstyle arrow flying up-right, barbed at both ends
-  kick: [
-    'M 5.8 -5.8 L 4.6 -0.6 L 2.8 -2.2 L -2.6 3.2 L -1 4.6 L -5.8 5.8 L -4.6 1 L -3 2.4 L 2.4 -3 L 0.6 -4.6 Z',
-  ],
-  // HATS: a four-ray sparkle star, edges sucked in like taffy
-  hat: [
-    'M 0 -6.6 C 0.9 -2.2 2.2 -0.9 6.4 0 C 2.2 0.9 0.9 2.2 0 6.6 C -0.9 2.2 -2.2 0.9 -6.4 0 C -2.2 -0.9 -0.9 -2.2 0 -6.6 Z',
-  ],
-  // CLAP: an exclamation mark, its dot already gone droplet
-  clap: [
-    'M -1.4 -6.8 L 1.4 -6.8 L 0.8 1.4 L -0.8 1.4 Z',
-    'M 0 3.6 C 1.2 3.6 1.4 4.6 0.9 5.7 C 0.5 6.6 -0.5 6.6 -0.9 5.7 C -1.4 4.6 -1.2 3.6 0 3.6 Z',
-  ],
-  // ACID: a squat crown sagging at the base
-  acid: [
-    'M -5.8 -3.4 L -2.8 -0.8 L 0 -5.2 L 2.8 -0.8 L 5.8 -3.4 L 4.6 3.2 Q 0 4.8 -4.6 3.2 Z',
-  ],
+// the four lab vessels: white line-art glassware, local unit ~14px tall,
+// each holding a violet-glowing liquid (surface line + micro bubbles)
+const TAG_ART = {
+  // KICK: an Erlenmeyer flask
+  kick: {
+    glass: [
+      'M -1.9 -7.2 L 1.9 -7.2',
+      'M -1.4 -6.6 L -1.4 -2.4 L -5.5 5 Q -6.4 6.9 -4.3 6.9 L 4.3 6.9 Q 6.4 6.9 5.5 5 L 1.4 -2.4 L 1.4 -6.6',
+    ],
+    liquid: ['M -4.1 2.6 Q 0 1.6 4.1 2.6'],
+    bubbles: [[-1.6, 4.6, 0.55], [1.3, 3.7, 0.4]],
+  },
+  // HATS: two test tubes side by side in a rack
+  hat: {
+    glass: [
+      'M -4.9 -6.9 L -1.1 -6.9',
+      'M -4.2 -6.5 L -4.2 4.6 Q -4.2 6.7 -3 6.7 Q -1.8 6.7 -1.8 4.6 L -1.8 -6.5',
+      'M 1.1 -6.9 L 4.9 -6.9',
+      'M 1.8 -6.5 L 1.8 4.6 Q 1.8 6.7 3 6.7 Q 4.2 6.7 4.2 4.6 L 4.2 -6.5',
+      'M -5.8 -0.4 L 5.8 -0.4',
+    ],
+    liquid: ['M -4.2 1.5 Q -3 0.9 -1.8 1.5', 'M 1.8 0.2 Q 3 -0.4 4.2 0.2'],
+    bubbles: [[-3, 3.4, 0.4], [3, 2.4, 0.4]],
+  },
+  // CLAP: a beaker, spout on the left, graduations on the right
+  clap: {
+    glass: [
+      'M -5.6 -7 L -4.4 -6 L -4.4 5.2 Q -4.4 6.8 -2.8 6.8 L 2.8 6.8 Q 4.4 6.8 4.4 5.2 L 4.4 -6 L 5.2 -6.7',
+      'M 2.4 -2.4 L 4.4 -2.4',
+      'M 2.4 0.6 L 4.4 0.6',
+    ],
+    liquid: ['M -4.4 2 Q 0 1.1 4.4 2'],
+    bubbles: [[-1.8, 4.4, 0.5], [1.4, 3.4, 0.4]],
+  },
+  // ACID: a dropper, one drop trembling at its tip
+  acid: {
+    glass: [
+      'M -2.4 -4.4 Q -2.4 -7.6 0 -7.6 Q 2.4 -7.6 2.4 -4.4 L 1.8 -3.3 L 1.1 -2.5 L 1.1 3.2 L 0 6.2 L -1.1 3.2 L -1.1 -2.5 L -1.8 -3.3 Z',
+    ],
+    liquid: ['M -1.1 0.2 L 1.1 0.2', 'M 0 0.6 L 0 4.4'],
+    bubbles: [[0, -5.6, 0.45]],
+    tipDrop: { y: 6.4, s: 0.6 },
+  },
 };
 
-// pasted at their own heights in the left/right margins — wall-fixed
+// shelved at their own heights in the left/right margins — wall-fixed
 const TAG_POS = {
   kick: { x: 20, y: 112, s: 1.05, label: 'KICK' },
   hat: { x: 300, y: 104, s: 0.92, label: 'HATS' },
@@ -270,21 +286,22 @@ const TAG_POS = {
 
 // ---- scene state ----
 
-let sunEl = null; // the whole MELT piece (class `sun`, play toggle)
-let pieceGooEl = null; // letters container (dims while loading)
-let pieceHazeEl = null; // luminous wash behind the word
-const letterEls = []; // per letter: { outer, inner } sharing one d per frame
+let sunEl = null; // the whole molten mass (class `sun`, play toggle)
+let pieceGooEl = null; // goo container (dims while loading)
+let pieceHazeEl = null; // luminous wash behind the mass
+let blobOuterEl = null; // the mass: luminous fill + white outline, one path
+let blobEchoEl = null; // violet echo line tracing just inside the lower edge
 
-const dripsArr = []; // per step: { g, line, dropWrap, drop, halo, crown, x, sway, lenOff, lenOn, curLen }
-const slideThreads = []; // 16 catenaries of light, prev drip tip -> slide drip tip
-const ghostDrips = []; // extra faint strands that surface as MELT rises
+const dripsArr = []; // per step: { g, dropWrap, drop, halo, x, szRnd, hang, bulge, sx, sy }
+const edgeYs = Array.from({ length: STEPS }, () => BLOB_EDGE); // this frame's lower-edge y at each drip point
+const slideFilms = []; // 16 sagging goo films bridging slide steps to their neighbours
 const fallDrops = []; // pooled falling droplets (glob strikes)
 const ripples = []; // pooled pool-surface ripples
 const bubbles = []; // pooled boil bubbles (high MELT)
 const impulses = []; // pool surface impacts { x, amp, age }
 const mistPts = []; // wall mist particles
 
-const tagEls = {}; // track -> { g, scale, run }
+const tagEls = {}; // track -> { g, scale, liq, run, runPrefix }
 const selectionRings = {};
 
 let meltValueEl = null;
@@ -293,7 +310,7 @@ let poolLineEl = null;
 let poolEchoEl = null;
 let poolY = POOL_BASE;
 let poolTarget = POOL_BASE;
-let kickEnv = 0; // word shudder on each kick, decays in the rAF loop
+let kickEnv = 0; // mass shudder on each kick, decays in the rAF loop
 let nowT = 0; // last rAF timestamp, for surface queries outside animate
 
 const meltSlider = document.getElementById('melt-slider');
@@ -324,12 +341,22 @@ function buildDefs() {
   glow.appendChild(merge);
   defs.appendChild(glow);
 
-  // wash of light behind the piece
+  // wash of light behind the mass
   const pieceHaze = el('radialGradient', { id: 'piece-haze' });
   pieceHaze.appendChild(el('stop', { offset: '0%', 'stop-color': '#efdffb', 'stop-opacity': 0.5 }));
   pieceHaze.appendChild(el('stop', { offset: '60%', 'stop-color': '#b678f2', 'stop-opacity': 0.14 }));
   pieceHaze.appendChild(el('stop', { offset: '100%', 'stop-color': '#a34dff', 'stop-opacity': 0 }));
   defs.appendChild(pieceHaze);
+
+  // the mass's interior: luminous up where it is thick, fading to nothing
+  // at the lower edge (userSpace so it stays put while the edge slumps)
+  const blobFill = el('linearGradient', {
+    id: 'blob-fill', gradientUnits: 'userSpaceOnUse', x1: 0, y1: -20, x2: 0, y2: 96,
+  });
+  blobFill.appendChild(el('stop', { offset: '0%', 'stop-color': '#e6ccff', 'stop-opacity': 0.5 }));
+  blobFill.appendChild(el('stop', { offset: '45%', 'stop-color': '#b678f2', 'stop-opacity': 0.28 }));
+  blobFill.appendChild(el('stop', { offset: '100%', 'stop-color': '#a34dff', 'stop-opacity': 0.12 }));
+  defs.appendChild(blobFill);
 
   // a lit hanging drop: hot core into violet falloff
   const dropLit = el('radialGradient', { id: 'drop-lit' });
@@ -506,11 +533,11 @@ function spawnRipple(x, big) {
   rp.el.setAttribute('stroke-width', big ? 1 : 0.7);
 }
 
-// ---- the four throw-ups pasted in the margins ----
+// ---- the four lab vessels shelved in the margins ----
 
 function buildTags() {
   for (const [track, cfg] of Object.entries(TAG_POS)) {
-    // this tag's own paint-run, bleeding all the way down into the pool
+    // this vessel's overflow, bleeding all the way down into the pool
     // (the d is a stored prefix + the water line's y, re-joined per frame)
     const runPrefix = `M ${cfg.x} ${cfg.y + 10} C ${cfg.x + 1.8} ${cfg.y + 40} ${cfg.x - 1.2} ${(cfg.y + POOL_BASE) / 2 + 30} ${cfg.x + 1} `;
     const run = el('path', {
@@ -530,13 +557,44 @@ function buildTags() {
 
     const scale = el('g', { class: 'tag-scale' });
     scale.appendChild(el('circle', { cx: 0, cy: 0, r: 8, fill: 'url(#halo)', opacity: 0.8 }));
-    for (const d of TAG_GLYPHS[track]) {
-      scale.appendChild(el('path', {
-        d, fill: 'none', stroke: 'rgba(240,234,246,0.78)', 'stroke-width': 0.9,
-        'stroke-linejoin': 'round', 'stroke-linecap': 'round',
-        filter: 'url(#glow)', transform: `scale(${cfg.s})`,
+    const art = TAG_ART[track];
+    const inner = el('g', { transform: `scale(${cfg.s})` });
+    for (const d of art.glass) {
+      inner.appendChild(el('path', {
+        d, fill: 'none', stroke: 'rgba(240,234,246,0.78)', 'stroke-width': 0.85,
+        'stroke-linejoin': 'round', 'stroke-linecap': 'round', filter: 'url(#glow)',
       }));
     }
+    // the liquid inside: violet surface line + micro bubbles; muting the
+    // track turns this glow off entirely
+    const liq = el('g');
+    for (const d of art.liquid) {
+      liq.appendChild(el('path', {
+        d, fill: 'none', stroke: 'var(--accent)', 'stroke-width': 0.8,
+        'stroke-linecap': 'round', opacity: 0.9, filter: 'url(#glow)',
+      }));
+    }
+    for (const [i, [bx, by, br]] of art.bubbles.entries()) {
+      const bub = el('circle', {
+        class: 'vial-bub', cx: bx, cy: by, r: br,
+        fill: 'none', stroke: 'var(--accent2)', 'stroke-width': 0.4, opacity: 0.55,
+      });
+      bub.style.animationDelay = `${(-i * 1.1 - hash01(cfg.x + i) * 2).toFixed(2)}s`;
+      liq.appendChild(bub);
+    }
+    if (art.tipDrop) {
+      // the dropper's drop, forever about to fall
+      const tdWrap = el('g', { transform: `translate(0 ${art.tipDrop.y})` });
+      const tdBob = el('g', { class: 'drip-bob' });
+      tdBob.appendChild(el('path', {
+        d: DROP_D, transform: `scale(${art.tipDrop.s})`,
+        fill: 'url(#drop-lit)', stroke: 'var(--accent)', 'stroke-width': 0.35,
+      }));
+      tdWrap.appendChild(tdBob);
+      liq.appendChild(tdWrap);
+    }
+    inner.appendChild(liq);
+    scale.appendChild(inner);
     g.appendChild(scale);
 
     const label = el('text', { y: 15.5, 'text-anchor': 'middle', class: 'tag-label' });
@@ -548,43 +606,34 @@ function buildTags() {
       selectTrack(track);
     });
     selectionRings[track] = ring;
-    tagEls[track] = { g, scale, run, runPrefix };
+    tagEls[track] = { g, scale, liq, run, runPrefix };
     space.appendChild(g);
   }
 }
 
-// ---- the 16 drips = the 16 steps ----
+// ---- the 16 drip points = the 16 steps ----
+// No strands: each step is a nipple on the mass's lower edge (the bulge is
+// baked into the edge outline) with a drop swelling straight out of it.
 
 function buildDrips() {
-  // slide catenaries live in wall coordinates, under the strands
+  // slide films: sagging membranes of goo bridging neighbouring drip
+  // points; the lit ones are re-pathed every frame under the drops
   for (let i = 0; i < STEPS; i++) {
-    const th = el('path', {
-      d: '', fill: 'none', stroke: 'var(--accent2)', 'stroke-width': 0.7,
+    const f = el('path', {
+      d: '', fill: 'var(--accent)', 'fill-opacity': 0.14,
+      stroke: 'var(--accent2)', 'stroke-width': 0.7,
       'stroke-linecap': 'round', opacity: 0, filter: 'url(#glow)',
     });
-    space.appendChild(th);
-    slideThreads.push(th);
+    space.appendChild(f);
+    slideFilms.push(f);
   }
 
   for (let i = 0; i < STEPS; i++) {
     const x = DRIP_X0 + DRIP_DX * i;
-    const g = el('g', { class: 'drip', transform: `translate(${x} ${DRIP_TOP})` });
+    const g = el('g', { class: 'drip', transform: `translate(${x} ${BLOB_EDGE})` });
 
-    const line = el('path', {
-      d: '', fill: 'none', 'stroke-linecap': 'round',
-      stroke: 'rgba(240,234,246,0.3)', 'stroke-width': 0.45, opacity: 0.4,
-    });
-    g.appendChild(line);
-
-    const crown = el('path', {
-      d: CROWN_D, transform: 'translate(0 -4) scale(0.9)',
-      fill: 'none', stroke: 'var(--accent2)', 'stroke-width': 0.7,
-      'stroke-linejoin': 'round', opacity: 0, filter: 'url(#glow)',
-    });
-    g.appendChild(crown);
-
-    const dropWrap = el('g'); // state scale + tip position (attribute)
-    const bob = el('g', { class: 'drip-bob' }); // slow viscous sway (CSS)
+    const dropWrap = el('g'); // per-frame state scale (anchor rides in g)
+    const bob = el('g', { class: 'drip-bob' }); // slow viscous quiver (CSS)
     bob.style.animationDelay = `${(-hash01(i * 31) * 4).toFixed(2)}s`;
     const halo = el('circle', { cx: 0, cy: 3.6, r: 5.5, fill: 'url(#halo)', opacity: 0.6 });
     const drop = el('path', { class: 'drip-drop', d: DROP_D, fill: 'url(#drop-lit)', stroke: 'var(--accent)', 'stroke-width': 0.4 });
@@ -595,31 +644,17 @@ function buildDrips() {
 
     space.appendChild(g);
     dripsArr.push({
-      g, line, dropWrap, drop, halo, crown, x,
-      sway: (hash01(i * 41 + 3) - 0.5) * 4,
-      lenOff: 12 + hash01(i * 3 + 1) * 14,
-      lenOn: 34 + hash01(i * 5 + 2) * 42,
-      curLen: 12,
+      g, dropWrap, drop, halo, x,
+      szRnd: 0.85 + hash01(i * 5 + 2) * 0.5, // every drop its own size...
+      hang: 1.05 + hash01(i * 13 + 4) * 0.75, // ...and its own droop
+      bulge: 0.8, sx: 0, sy: 0,
     });
-  }
-
-  // ghost strands between the real ones — surfacing only as MELT rises
-  for (let i = 0; i < 8; i++) {
-    const x = DRIP_X0 + DRIP_DX * (i * 2 + 0.5);
-    const len = 16 + hash01(i * 47 + 9) * 30;
-    const p = el('path', {
-      d: `M ${x} ${DRIP_TOP} C ${x + 1} ${DRIP_TOP + len * 0.4} ${x - 0.8} ${DRIP_TOP + len * 0.7} ${x + 0.4} ${DRIP_TOP + len}`,
-      fill: 'none', stroke: 'var(--accent2)', 'stroke-width': 0.4,
-      'stroke-linecap': 'round', opacity: 0,
-    });
-    space.appendChild(p);
-    ghostDrips.push(p);
   }
 }
 
-// world-space y of a drip's tip (melt fattens and lowers the whole curtain)
-function tipWorldY(d) {
-  return DRIP_TOP + melt * 8 + d.curLen * (1 + melt * 0.3);
+// world-space y of a hanging drop's tip (melt fattens and lowers everything)
+function dripTipY(i) {
+  return edgeYs[i] + 7.2 * dripsArr[i].sy * (1 + melt * 0.7);
 }
 
 // ---- the glob playhead + its falling droplets ----
@@ -650,62 +685,75 @@ function buildGlob() {
   parkPlayhead();
 }
 
-// ---- the piece: MELT in bubble letters = the play toggle ----
+// ---- the molten mass = the play toggle ----
 
 function buildPiece() {
   sunEl = el('g', { class: 'sun' });
 
-  pieceHazeEl = el('ellipse', { cx: 160, cy: PIECE_Y, rx: 132, ry: 36, fill: 'url(#piece-haze)', opacity: 0.45 });
+  pieceHazeEl = el('ellipse', { cx: 160, cy: 26, rx: 150, ry: 34, fill: 'url(#piece-haze)', opacity: 0.45 });
   sunEl.appendChild(pieceHazeEl);
 
   pieceGooEl = el('g', { class: 'goo' });
-  for (const L of LETTERS) {
-    const lg = el('g', { transform: `translate(${L.cx} ${PIECE_Y}) scale(${L.s})` });
-    // inner echo line of the throw-up: same outline, shrunk, violet
-    const inner = el('path', {
-      d: '', transform: 'scale(0.74)', fill: 'url(#piece-haze)', 'fill-opacity': 0.25,
-      stroke: 'var(--accent)', 'stroke-width': 0.8, opacity: 0.75,
-    });
-    // fat hollow outer outline, white line-art with glow
-    const outer = el('path', {
-      d: '', fill: 'none', stroke: 'rgba(240,234,246,0.88)',
-      'stroke-width': 1.3, 'stroke-linejoin': 'round', filter: 'url(#glow)',
-    });
-    lg.appendChild(inner);
-    lg.appendChild(outer);
-    pieceGooEl.appendChild(lg);
-    letterEls.push({ outer, inner });
-  }
+  // the sheet itself: luminous fill + fat white outline with glow
+  blobOuterEl = el('path', {
+    d: '', fill: 'url(#blob-fill)', stroke: 'rgba(240,234,246,0.88)',
+    'stroke-width': 1.3, 'stroke-linejoin': 'round', filter: 'url(#glow)',
+  });
+  // violet echo line tracing just inside the lower edge
+  blobEchoEl = el('path', {
+    d: '', fill: 'none', stroke: 'var(--accent)', 'stroke-width': 0.8,
+    'stroke-linecap': 'round', opacity: 0.7,
+  });
+  pieceGooEl.appendChild(blobOuterEl);
+  pieceGooEl.appendChild(blobEchoEl);
   sunEl.appendChild(pieceGooEl);
 
-  // full-width hit slab: the whole word is the button, and it never moves
-  sunEl.appendChild(el('rect', { x: 34, y: 24, width: 252, height: 66, fill: 'transparent' }));
+  // the whole mass is the button: a slab over its resting extent (the
+  // filled outline itself also takes hits wherever MELT slumps it lower)
+  sunEl.appendChild(el('rect', { x: 0, y: 0, width: W, height: 88, fill: 'transparent' }));
   sunEl.classList.add('loading');
   sunEl.addEventListener('pointerdown', togglePlay);
   space.appendChild(sunEl);
 }
 
-// one letter's molten outline for this frame: breath + hand wobble + slump
-function letterD(k, t) {
-  const L = LETTERS[k];
-  const breathe = playing ? 0.045 * Math.sin(t / 420 + k * 1.3) : 0.02 * Math.sin(t / 1400 + k);
-  const s = 1 + breathe + kickEnv * 0.1;
-  const pts = [];
-  for (let i = 0; i < L.pts.length; i++) {
-    const [px, py] = L.pts[i];
-    let x = px * s
-      + 0.8 * Math.sin(t / 610 + i * 2.1 + k * 2.4)
-      + melt * 1.1 * Math.sin(t / 270 + i * 3.1 + k);
-    let y = py * s + 0.7 * Math.sin(t / 760 + i * 1.7 + k * 3.3);
-    if (py > 0) {
-      // everything below the waist drags down — by 100% MELT the word
-      // hangs off itself, barely readable
-      const w = py / 22;
-      y += w * w * (1.6 + melt * 15 + kickEnv * 1.8);
-    }
-    pts.push({ x, y });
+// open Catmull-Rom polyline -> cubic Bezier (the echo line primitive)
+function openPath(pts) {
+  const n = pts.length;
+  let d = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const a = pts[Math.max(0, i - 1)];
+    const b = pts[i];
+    const c = pts[i + 1];
+    const e = pts[Math.min(n - 1, i + 2)];
+    d += ` C ${(b.x + (c.x - a.x) / 6).toFixed(2)} ${(b.y + (c.y - a.y) / 6).toFixed(2)}`
+      + ` ${(c.x - (e.x - b.x) / 6).toFixed(2)} ${(c.y - (e.y - b.y) / 6).toFixed(2)}`
+      + ` ${c.x.toFixed(2)} ${c.y.toFixed(2)}`;
   }
-  return gooPath(pts);
+  return d;
+}
+
+// this frame's mass outline: the lower edge sampled at the 16 drip points
+// (stored into edgeYs so drops, films and glob all share the true edge),
+// one filler each side, two off-frame corners — one closed goo loop
+function updateBlob(t) {
+  for (let i = 0; i < STEPS; i++) {
+    const d = dripsArr[i];
+    edgeYs[i] = blobEdgeBase(d.x, t) + d.bulge * (1 + melt * 0.8) + globBump(d.x);
+  }
+  const pts = [
+    { x: -BLOB_OFF, y: -BLOB_OFF },
+    { x: -BLOB_OFF, y: blobEdgeBase(-BLOB_OFF, t) },
+  ];
+  for (let i = 0; i < STEPS; i++) pts.push({ x: dripsArr[i].x, y: edgeYs[i] });
+  pts.push({ x: W + BLOB_OFF, y: blobEdgeBase(W + BLOB_OFF, t) });
+  pts.push({ x: W + BLOB_OFF, y: -BLOB_OFF });
+  blobOuterEl.setAttribute('d', gooPath(pts));
+
+  const epts = [];
+  for (let i = 0; i < STEPS; i++) {
+    epts.push({ x: dripsArr[i].x, y: edgeYs[i] - 4.6 - dripsArr[i].bulge * 0.5 });
+  }
+  blobEchoEl.setAttribute('d', openPath(epts));
 }
 
 function buildScene() {
@@ -719,7 +767,7 @@ function buildScene() {
   refreshOverview();
 }
 
-// ---- overview: dress each drip to match the pattern ----
+// ---- overview: dress each drip point to match the pattern ----
 
 function dripState(i) {
   if (toggles.acid[i]) return acidAcc[i] ? 'acc' : 'acid';
@@ -731,43 +779,29 @@ function setDrip(i) {
   const d = dripsArr[i];
   const st = dripState(i);
   const lit = st !== 'off';
-  const len = lit ? d.lenOn * (st === 'acc' ? 1.1 : 1) : d.lenOff;
-  d.curLen = len;
-  // the strand: a lazy S-curve, rebuilt only when the pattern changes
-  d.line.setAttribute('d',
-    `M 0 0 C ${d.sway.toFixed(1)} ${(len * 0.35).toFixed(1)}`
-    + ` ${(-d.sway * 0.7).toFixed(1)} ${(len * 0.7).toFixed(1)}`
-    + ` ${(d.sway * 0.4).toFixed(1)} ${len.toFixed(1)}`);
-  d.line.setAttribute('stroke', lit ? 'var(--accent2)' : 'rgba(240,234,246,0.3)');
-  d.line.setAttribute('stroke-width', st === 'acc' ? 1 : lit ? 0.7 : 0.45);
-  d.line.setAttribute('opacity', lit ? 0.75 : 0.4);
-  // the drop swelling at the tip
-  const dropScale = st === 'acc' ? 1.5 : st === 'acid' ? 1.15 : 1;
-  d.dropWrap.setAttribute('transform', `translate(${(d.sway * 0.4).toFixed(1)} ${len.toFixed(1)}) scale(${dropScale})`);
+  // the nipple on the edge: barely there unlit, engorged on an accent
+  d.bulge = st === 'acc' ? 3.2 : st === 'acid' ? 2.3 : st === 'on' ? 1.9 : 0.8;
+  // the drop swelling straight out of the edge (its live transform — edge
+  // anchor + melt fattening — is applied every frame from these factors)
+  const size = lit ? d.szRnd * (st === 'acc' ? 1.85 : st === 'acid' ? 1.4 : 1.2) : 0;
+  d.sx = size * 0.92;
+  d.sy = size * d.hang;
   d.drop.setAttribute('fill', st === 'acc' ? 'url(#drop-acc)' : 'url(#drop-lit)');
   d.drop.style.display = lit ? '' : 'none';
   d.halo.style.display = lit ? '' : 'none';
-  d.crown.setAttribute('opacity', st === 'acc' ? 0.9 : 0);
+  d.halo.setAttribute('opacity', st === 'acc' ? 0.85 : 0.6);
   refreshSlide(i);
 }
 
-// the sagging catenary of light between a slide step and its neighbour
+// a slide step bridges to its neighbour with a sagging film of goo; only
+// the on/off state lives here — the lit films are re-pathed every frame
+// so they stay glued to the living edge
 function refreshSlide(i) {
-  const th = slideThreads[i];
-  if (i === 0 || !(toggles.acid[i] && acidSlide[i])) {
-    th.setAttribute('opacity', 0);
-    delete th.dataset.on;
-    return;
-  }
-  const a = dripsArr[i - 1];
-  const b = dripsArr[i];
-  const ay = tipWorldY(a);
-  const by = tipWorldY(b);
-  const sag = Math.max(ay, by) + 8 + Math.abs(b.x - a.x) * 0.1;
-  th.setAttribute('d',
-    `M ${a.x.toFixed(1)} ${ay.toFixed(1)} Q ${((a.x + b.x) / 2).toFixed(1)} ${sag.toFixed(1)} ${b.x.toFixed(1)} ${by.toFixed(1)}`);
-  th.setAttribute('opacity', 0.55);
-  th.dataset.on = '1';
+  const f = slideFilms[i];
+  const on = i > 0 && toggles.acid[i] && acidSlide[i];
+  f.setAttribute('opacity', on ? 0.6 : 0);
+  if (on) f.dataset.on = '1';
+  else delete f.dataset.on;
 }
 
 function refreshOverview() {
@@ -782,20 +816,10 @@ function setMelt(value) {
   meltValueEl.textContent = `${Math.round(melt * 100)}%`;
   meltValueEl.style.fill = melt > 0.001 ? 'var(--accent-bright)' : 'var(--dim)';
   poolTarget = POOL_BASE - melt * POOL_RANGE;
-  // the whole drip curtain runs heavier: fatter, longer, lower
-  const sx = (1 + melt * 0.55).toFixed(3);
-  const sy = (1 + melt * 0.3).toFixed(3);
-  const dy = (DRIP_TOP + melt * 8).toFixed(1);
-  for (const d of dripsArr) {
-    d.g.setAttribute('transform', `translate(${d.x} ${dy}) scale(${sx} ${sy})`);
-  }
-  for (const [i, th] of slideThreads.entries()) {
-    if (th.dataset.on) refreshSlide(i);
-  }
-  for (const [i, p] of ghostDrips.entries()) {
-    p.setAttribute('opacity', Math.max(0, (melt - 0.2 - i * 0.05) * 0.5).toFixed(2));
-  }
   if (meltSlider) meltSlider.value = melt;
+  // everything else — the mass slumping toward centre screen, drops
+  // fattening and lengthening, films sagging deeper — reads `melt`
+  // directly inside the per-frame edge and scale math
 }
 
 // ---- track selection ----
@@ -924,7 +948,7 @@ function pulse(track, active) {
   void tag.scale.getBoundingClientRect(); // restart the animation
   tag.scale.classList.add('hit');
   if (track === 'kick') {
-    kickEnv = 1; // the word shudders; the pool answers
+    kickEnv = 1; // the mass shudders; the pool answers
     pushImpulse(glob.targetX, 1.1);
   }
 }
@@ -934,7 +958,8 @@ function pushImpulse(x, amp) {
   if (impulses.length > 10) impulses.shift();
 }
 
-// the glob passes a lit drip: its drop tears free and falls into the pool
+// the glob passes a lit drip point: it squeezes the drop off the edge and
+// the drop falls into the pool
 function shedDrop(index) {
   const d = dripsArr[index];
   const st = dripState(index);
@@ -948,7 +973,7 @@ function shedDrop(index) {
   f.active = true;
   f.big = st === 'acc';
   f.x = d.x;
-  f.y = tipWorldY(d);
+  f.y = dripTipY(index);
   f.vy = 24;
   f.el.setAttribute('fill', f.big ? 'url(#drop-acc)' : 'url(#drop-lit)');
   f.el.setAttribute('opacity', 0.95);
@@ -959,22 +984,48 @@ function shedDrop(index) {
 let lastFrame = 0;
 
 function renderFrame(t) {
-  // clamp dt so returning from a hidden tab doesn't jump the scene
-  const dt = Math.min(lastFrame ? (t - lastFrame) / 1000 : 0, 0.1);
+  // clamp dt to [0, 0.1]: a hidden-tab return must not jump the scene, and a
+  // backwards timestamp must not feed the integrators a negative step
+  const dt = Math.min(Math.max(lastFrame ? (t - lastFrame) / 1000 : 0, 0), 0.1);
   lastFrame = t;
   nowT = t;
 
   kickEnv = Math.max(0, kickEnv - dt * 6);
 
-  // the piece: four letter outlines re-pathed from wobble sines (the only
-  // per-frame path regeneration besides the pool surface and glob thread)
-  for (let k = 0; k < LETTERS.length; k++) {
-    const d = letterD(k, t);
-    letterEls[k].outer.setAttribute('d', d);
-    letterEls[k].inner.setAttribute('d', d); // shrunk by its own transform
-  }
+  // the glob crawls first, so the edge can swell around where it now is
+  glob.x += (glob.targetX - glob.x) * (1 - Math.exp(-dt * 16));
+
+  // the mass: outline + echo re-pathed from the edge math (with the pool
+  // surface, glob thread and lit slide films, the only per-frame path
+  // regeneration)
+  updateBlob(t);
   const flicker = melt * 0.12 * Math.sin(t / 95) * Math.sin(t / 41);
   pieceHazeEl.setAttribute('opacity', Math.max(0, 0.45 + kickEnv * 0.25 + flicker).toFixed(3));
+
+  // the 16 drops ride the living edge (transforms only, no new paths)
+  const mSclX = 1 + melt * 0.55;
+  const mSclY = 1 + melt * 0.7;
+  for (let i = 0; i < STEPS; i++) {
+    const d = dripsArr[i];
+    d.g.setAttribute('transform', `translate(${d.x} ${edgeYs[i].toFixed(2)})`);
+    if (d.sx > 0) {
+      d.dropWrap.setAttribute('transform',
+        `scale(${(d.sx * mSclX).toFixed(3)} ${(d.sy * mSclY).toFixed(3)})`);
+    }
+  }
+
+  // lit slide films: goo bridges sagging between neighbouring drip points
+  for (let i = 1; i < STEPS; i++) {
+    const f = slideFilms[i];
+    if (!f.dataset.on) continue;
+    const ax = dripsArr[i - 1].x;
+    const bx = dripsArr[i].x;
+    const ay = edgeYs[i - 1] + 0.6;
+    const by = edgeYs[i] + 0.6;
+    const sag = Math.max(ay, by) + 7 + melt * 7 + 1.2 * Math.sin(t / 480 + i * 1.9);
+    f.setAttribute('d',
+      `M ${ax.toFixed(1)} ${ay.toFixed(1)} Q ${((ax + bx) / 2).toFixed(1)} ${sag.toFixed(1)} ${bx.toFixed(1)} ${by.toFixed(1)} Z`);
+  }
 
   // the pool level oozes toward its target — never snaps
   poolY += (poolTarget - poolY) * (1 - Math.exp(-dt * 3));
@@ -1068,9 +1119,9 @@ function renderFrame(t) {
     }
   }
 
-  // the glob: crawls with lag, stretches while moving, plucks back on arrival
-  const gy = DRIP_TOP + melt * 8 - 1;
-  glob.x += (glob.targetX - glob.x) * (1 - Math.exp(-dt * 16));
+  // the glob: rides inside the lower edge (the bump in the edge math is
+  // its own swelling), stretches while moving, plucks back on arrival
+  const gy = blobEdgeBase(glob.x, t) + globBump(glob.x) * 0.55;
   const rem = glob.targetX - glob.x;
   const stretch = Math.min(1.1, Math.abs(rem) * 0.09);
   glob.pluck = Math.max(0, glob.pluck - dt * 3);
@@ -1087,9 +1138,10 @@ function renderFrame(t) {
       glob.thread.setAttribute('opacity', 0);
     } else {
       const span = glob.x - glob.fromX;
+      const fromY = blobEdgeBase(glob.fromX, t) + 1;
       const sag = Math.min(9, Math.abs(span) * 0.25 + 2);
       glob.thread.setAttribute('d',
-        `M ${glob.fromX.toFixed(1)} ${gy.toFixed(1)} Q ${(glob.fromX + span / 2).toFixed(1)} ${(gy + sag).toFixed(1)} ${glob.x.toFixed(1)} ${gy.toFixed(1)}`);
+        `M ${glob.fromX.toFixed(1)} ${fromY.toFixed(1)} Q ${(glob.fromX + span / 2).toFixed(1)} ${(Math.max(gy, fromY) + sag).toFixed(1)} ${glob.x.toFixed(1)} ${gy.toFixed(1)}`);
       glob.thread.setAttribute('stroke-width', (0.5 + 1.1 * glob.threadLife).toFixed(2));
       glob.thread.setAttribute('opacity', (0.55 * glob.threadLife).toFixed(2));
     }
@@ -1448,7 +1500,9 @@ function setMute(track, value) {
   document.querySelectorAll(`.mute-btn[data-mute="${track}"]`).forEach((b) => {
     b.classList.toggle('muting', value);
   });
-  // the throw-up sinks into the wall and its paint-run stops bleeding
+  // the vessel goes dark: its liquid's glow quenches, the glassware dims,
+  // and its overflow stops bleeding into the pool
+  tagEls[track].liq.style.opacity = value ? 0 : '';
   tagEls[track].g.style.opacity = value ? 0.18 : '';
   tagEls[track].run.style.opacity = value ? 0 : '';
 }
