@@ -1,13 +1,14 @@
 /* minima melt — molten acid machine, rendered in the minima series'
    light vocabulary: near-black background, strong film grain, vignette,
    EB Garamond serif, glowing white line-art / luminous orbs only — no fills,
-   no grey, no realistic illustration. The scene is MELTING GRAFFITI, a tag
-   drawn in light on a night wall: a wobbling bubble-letter "M" throw-up
-   (play) bleeding paint-runs, a ring of 16 spray splats (steps), a spray-can
-   playhead trailing mist, four melting graffiti icons (arrow / star / "!" /
-   crown = tracks) and a hand-tagged "MELT" that shears apart as you drag it
-   down. Accents: toxic violet + pale lavender, used sparingly.
-   Single screen on phone and desktop. */
+   no grey, no realistic illustration. The scene is a GRAVITY CASCADE WALL,
+   read top to bottom: bubble-letter "MELT" across the top (= play toggle),
+   sixteen viscous drips falling from its lower edge (= the steps), a glob
+   of light crawling the drip roots (= playhead), a luminous pool of molten
+   paint at the bottom (= the MELT macro, dragged up and down), and four
+   small throw-ups pasted in the margins (= the tracks). Every motion obeys
+   honey: stretch, neck, tear, wobble back. Accents: toxic violet + pale
+   lavender, used sparingly. Single screen on phone and desktop. */
 
 @font-face {
   font-family: 'EB Garamond';
@@ -80,27 +81,6 @@ body::after {
   opacity: 0.17;
   pointer-events: none;
   z-index: 50;
-}
-
-/* molten vapour banks drifting very slowly behind the core */
-.haze-a {
-  animation: haze-a 38s ease-in-out infinite alternate;
-}
-
-.haze-b {
-  animation: haze-b 54s ease-in-out infinite alternate;
-}
-
-@keyframes haze-a {
-  to {
-    transform: translate(24px, 12px);
-  }
-}
-
-@keyframes haze-b {
-  to {
-    transform: translate(-28px, -8px);
-  }
 }
 
 /* ---- header ---- */
@@ -301,75 +281,25 @@ main {
   display: block;
 }
 
-/* ---- scene bodies: melting graffiti icons (tracks) ---- */
+/* ---- the piece: bubble-letter MELT = play toggle ---- */
 
-.planet {
+.sun {
   cursor: pointer;
 }
 
-.planet-scale,
-.planet-body {
-  transform-box: fill-box;
-  transform-origin: center;
+/* while the audio engine loads, the word breathes low against the wall */
+.sun.loading .goo {
+  opacity: 0.3;
+  animation: goo-load 1.3s ease-in-out infinite;
 }
 
-.planet-scale.hit,
-.planet-body.hit {
-  animation: planet-hit 160ms ease-out;
-}
-
-@keyframes planet-hit {
+@keyframes goo-load {
   50% {
-    transform: scale(1.3);
+    opacity: 0.55;
   }
 }
 
-/* the icons (and the fx point) drift gently, as if half afloat in the ooze */
-.planet-body.bob {
-  animation: bob 6s ease-in-out infinite;
-}
-
-@keyframes bob {
-  50% {
-    transform: translateY(-4px);
-  }
-}
-
-/* paint-runs of light creeping down the wall (galaxy's comets;
-   pathLength is normalized to 100) */
-.comet {
-  stroke-dasharray: 14 86;
-}
-
-.comet-a {
-  animation: comet 9s linear infinite;
-}
-
-.comet-b {
-  animation: comet 14s linear infinite;
-  animation-delay: 5s;
-}
-
-.comet-c {
-  animation: comet 7s linear infinite;
-  animation-delay: 2s;
-}
-
-.comet-d {
-  animation: comet 11s linear infinite;
-  animation-delay: 8s;
-}
-
-@keyframes comet {
-  from {
-    stroke-dashoffset: 114;
-  }
-  to {
-    stroke-dashoffset: -14;
-  }
-}
-
-/* distant mist particles twinkle out of phase */
+/* distant sparks twinkle out of phase */
 .bg-star {
   animation: twinkle 4s ease-in-out infinite;
   opacity: 0.2;
@@ -381,223 +311,92 @@ main {
   }
 }
 
-/* the bubble-letter M wobbles from JS; auxiliary rings breathe with CSS */
-.sun-haze,
-.sun-burst,
-.sun-load,
-.core-wrap {
-  transform-box: fill-box;
-  transform-origin: center;
+/* ---- the drips: hanging drops sway like cold syrup ---- */
+
+.drip-bob {
+  animation: drip-bob 3.8s ease-in-out infinite;
 }
 
-/* while the audio engine loads, an arc of light circles the M's window */
-.sun-load {
-  opacity: 0;
-}
-
-.sun.loading .sun-load {
-  opacity: 0.9;
-  animation: sun-spin 1.1s linear infinite;
-}
-
-.sun.loading .sun-icon {
-  opacity: 0.15;
-}
-
-@keyframes sun-spin {
-  to {
-    transform: rotate(360deg);
+@keyframes drip-bob {
+  50% {
+    transform: translateY(1.7px);
   }
 }
 
-.sun-burst.go {
-  animation: burst 360ms ease-out;
+/* a shed drop snaps back to the strand, then slowly re-swells — ぷるん */
+.drip-drop {
+  transform-box: fill-box;
+  transform-origin: 50% 0%;
 }
 
-@keyframes burst {
-  from {
-    opacity: 0.5;
+.drip-drop.shed {
+  animation: drop-shed 520ms ease-out;
+}
+
+@keyframes drop-shed {
+  0% {
     transform: scale(1);
   }
-  to {
-    opacity: 0;
-    transform: scale(2.4);
+  25% {
+    transform: scale(0.12);
   }
-}
-
-.planet-label {
-  font-family: inherit;
-  font-size: 9.5px;
-  letter-spacing: 0.34em;
-  fill: var(--dim);
-}
-
-.sun {
-  cursor: pointer;
-}
-
-/* ---- splat ring: one hand-sprayed circle, no rotating shells ---- */
-
-/* ---- spray-can playhead: node to node, mist trailing off the nozzle ---- */
-
-.spray-head {
-  transition: transform 90ms linear;
-}
-
-.blob-head-glow {
-  transform-box: fill-box;
-  transform-origin: center;
-}
-
-/* the mist grains behind the nozzle flicker while the can travels */
-.can-mist {
-  animation: mist-flicker 1.5s ease-in-out infinite;
-}
-
-@keyframes mist-flicker {
-  0%,
+  55% {
+    transform: scale(0.7, 1.25);
+  }
+  80% {
+    transform: scale(1.18, 0.9);
+  }
   100% {
-    opacity: 0.12;
-  }
-  50% {
-    opacity: 0.55;
+    transform: scale(1);
   }
 }
 
-/* ---- spray burst: the can passes over a lit splat ---- */
+/* ---- the glob playhead ---- */
 
-.splash {
+.glob {
   pointer-events: none;
 }
 
-.splash .ripple,
-.splash .spl {
-  opacity: 0;
+/* ---- the four throw-ups pasted in the margins ---- */
+
+.tagup {
+  cursor: pointer;
+}
+
+.tag-scale {
   transform-box: fill-box;
   transform-origin: center;
 }
 
-.splash.go .ripple {
-  animation: burst 340ms ease-out;
+.tag-scale.hit {
+  animation: tag-hit 170ms ease-out;
 }
 
-.splash.go .spl-1 {
-  animation: spl-1 400ms ease-out;
-}
-
-.splash.go .spl-2 {
-  animation: spl-2 360ms ease-out;
-}
-
-.splash.go .spl-3 {
-  animation: spl-3 440ms ease-out;
-}
-
-.splash.go .spl-4 {
-  animation: spl-4 380ms ease-out;
-}
-
-@keyframes spl-1 {
-  from {
-    opacity: 0.9;
-    translate: 0 0;
-  }
-  to {
-    opacity: 0;
-    translate: -8px -6px;
+@keyframes tag-hit {
+  50% {
+    transform: scale(1.28);
   }
 }
 
-@keyframes spl-2 {
-  from {
-    opacity: 0.9;
-    translate: 0 0;
-  }
-  to {
-    opacity: 0;
-    translate: 8px -4px;
-  }
+.tag-label {
+  font-family: inherit;
+  font-size: 6.5px;
+  letter-spacing: 0.14em;
+  fill: var(--dim);
 }
 
-/* one grain of mist droops — it puffs out and sags down like wet paint */
-@keyframes spl-3 {
-  from {
-    opacity: 0.85;
-    translate: 0 0;
-  }
-  60% {
-    translate: 4px 2px;
-  }
-  to {
-    opacity: 0;
-    translate: 5px 9px;
-  }
-}
+/* ---- the pool = the MELT macro ---- */
 
-@keyframes spl-4 {
-  from {
-    opacity: 0.85;
-    translate: 0 0;
-  }
-  to {
-    opacity: 0;
-    translate: -3px 7px;
-  }
-}
-
-/* a struck splat stretches like jelly for an instant */
-.node-g .node-core {
-  transform-box: fill-box;
-  transform-origin: center;
-}
-
-.node-g.boing .node-core {
-  animation: boing 280ms ease-out;
-}
-
-@keyframes boing {
-  0% {
-    transform: scale(1, 1);
-  }
-  35% {
-    transform: scale(0.82, 1.5);
-  }
-  70% {
-    transform: scale(1.14, 0.86);
-  }
-  100% {
-    transform: scale(1, 1);
-  }
-}
-
-/* ---- MELT: the melting tag "MELT", top-left (galaxy's black hole seat) ---- */
-
-.meltctl {
+.pool-hit {
   cursor: ns-resize;
   touch-action: none;
-}
-
-.melt-throb {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: melt-throb 3.2s ease-in-out infinite;
-}
-
-@keyframes melt-throb {
-  0%,
-  100% {
-    opacity: 0.85;
-  }
-  50% {
-    opacity: 1;
-  }
 }
 
 .melt-value {
   font-family: inherit;
   font-size: 9.5px;
   letter-spacing: 0.12em;
-  fill: var(--cream);
+  fill: var(--dim);
 }
 
 /* ---- editor: bottom sheet on phones, side pane on desktop ---- */
